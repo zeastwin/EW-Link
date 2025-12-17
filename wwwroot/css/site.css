@@ -29,3 +29,42 @@ body {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
   text-align: start;
 }
+
+/* Resources page tuning */
+.resources-toolbar {
+  row-gap: 0.75rem;
+}
+
+.resources-table .resource-name {
+  min-width: 160px;
+}
+
+.resources-table .resource-icon {
+  font-size: 1.1rem;
+}
+
+.min-w-0 {
+  min-width: 0;
+}
+
+.resource-list .resource-item {
+  border: 1px solid #e7e7e7;
+  border-radius: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.resource-list .resource-item:last-child {
+  margin-bottom: 0;
+}
+
+.resource-list .resource-icon {
+  font-size: 1.2rem;
+}
+
+.resource-list .form-check-input {
+  margin-top: 0;
+}
+
+.progress {
+  height: 0.8rem;
+}

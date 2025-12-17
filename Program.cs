@@ -1,26 +1,61 @@
+using EW_Link.Options;
+using EW_Link.Services;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+const long uploadLimitBytes = 1024L * 1024 * 1024;
+var requestHeadersTimeout = TimeSpan.FromMinutes(2);
+
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = uploadLimitBytes;
+});
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = uploadLimitBytes;
+    options.Limits.RequestHeadersTimeout = requestHeadersTimeout;
+});
+
+builder.Services.Configure<ResourceOptions>(builder.Configuration.GetSection("Resources"));
+builder.Services.PostConfigure<ResourceOptions>(options =>
+{
+    var envRoot = builder.Configuration["RESOURCES_ROOT"];
+    if (!string.IsNullOrWhiteSpace(envRoot))
+    {
+        options.Root = envRoot;
+    }
+});
+
+builder.Services.AddDataProtection()
+    .SetApplicationName("ew-link")
+    .PersistKeysToFileSystem(new DirectoryInfo("/Data/aspnet-keys"));
+
+builder.Services.AddSingleton<IResourceStore, ResourceStore>();
+builder.Services.AddSingleton<IZipStreamService, ZipStreamService>();
+builder.Services.AddHostedService<TemporaryCleanupService>();
+
 builder.Services.AddRazorPages();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
-}
+var formOptions = app.Services.GetRequiredService<IOptions<FormOptions>>().Value;
+var resourceOptions = app.Services.GetRequiredService<IOptions<ResourceOptions>>().Value;
+var resourceStore = app.Services.GetRequiredService<IResourceStore>();
+resourceStore.EnsureRoots();
 
-app.UseHttpsRedirection();
+app.Logger.LogInformation(
+    "Resource root: {ResourceRoot}; Upload limits - Form: {FormLimitBytes} bytes, Kestrel: {KestrelLimitBytes} bytes, HeadersTimeout: {HeadersTimeout}",
+    resourceOptions.Root,
+    formOptions.MultipartBodyLengthLimit,
+    uploadLimitBytes,
+    requestHeadersTimeout);
 
+app.UseStaticFiles();
 app.UseRouting();
-
-app.UseAuthorization();
-
-app.MapStaticAssets();
-app.MapRazorPages()
-   .WithStaticAssets();
+app.MapRazorPages();
 
 app.Run();
