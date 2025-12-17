@@ -62,8 +62,10 @@
                     <input type="hidden" name="q" value="@Model.Filter" />
                     <input type="hidden" name="sort" value="@Model.SortFieldParam" />
                     <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
-                    <input type="file" name="file" id="upload-file" class="form-control flex-grow-1" />
-                    <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
+                    <div class="input-group flex-grow-1">
+                        <input type="file" name="file" id="upload-file" class="form-control" />
+                        <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
+                    </div>
                 </form>
             </div>
             <div class="col-12 col-lg-5">
