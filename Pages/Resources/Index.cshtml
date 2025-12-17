@@ -318,22 +318,9 @@
                     if (hasDir && !confirm('选中了文件夹，打包时将忽略它们，仅下载文件。继续？')) {
                         return;
                     }
-                    // 创建临时隐藏容器确保只提交文件路径
+                    // 直接提交已勾选的文件复选框，避免额外隐藏输入导致重复路径
                     const form = container.querySelector('#zip-form');
                     if (!form) return;
-                    let temp = form.querySelector('#zip-temp-paths');
-                    if (temp) temp.remove();
-                    temp = document.createElement('div');
-                    temp.id = 'zip-temp-paths';
-                    temp.classList.add('d-none');
-                    files.forEach(val => {
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'paths';
-                        input.value = val;
-                        temp.appendChild(input);
-                    });
-                    form.appendChild(temp);
                     form.submit();
                 });
             }
