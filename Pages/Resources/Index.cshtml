@@ -136,7 +136,7 @@
                             <div class="form-check">
                                 @if (entry.IsDirectory)
                                 {
-                                    <input class="form-check-input entry-checkbox" type="checkbox" value="@entry.RelativePath" data-kind="dir" />
+                                    <input class="form-check-input entry-checkbox" type="checkbox" name="paths" value="@entry.RelativePath" data-kind="dir" />
                                 }
                                 else
                                 {
@@ -219,19 +219,18 @@
             const createFolderBtn = container.querySelector('#create-folder-btn');
             const createFolderName = container.querySelector('#create-folder-name');
 
-            const updateState = () => {
-                const selectedItems = checkboxes.filter(cb => cb.checked);
-                const selected = selectedItems.length;
-                const selectedFiles = selectedItems.filter(cb => cb.dataset.kind !== 'dir').length;
-                if (selectedCount) selectedCount.textContent = selected.toString();
-                if (downloadBtn) {
-                    downloadBtn.textContent = `批量下载 ZIP (${selectedFiles})`;
-                    downloadBtn.disabled = selectedFiles === 0;
-                }
-                if (deleteBtn) {
-                    deleteBtn.disabled = selected === 0;
-                }
-                if (selectAll) {
+                const updateState = () => {
+                    const selectedItems = checkboxes.filter(cb => cb.checked);
+                    const selected = selectedItems.length;
+                    if (selectedCount) selectedCount.textContent = selected.toString();
+                    if (downloadBtn) {
+                        downloadBtn.textContent = `批量下载 ZIP (${selected})`;
+                        downloadBtn.disabled = selected === 0;
+                    }
+                    if (deleteBtn) {
+                        deleteBtn.disabled = selected === 0;
+                    }
+                    if (selectAll) {
                     selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
                     selectAll.checked = selected > 0 && selected === checkboxes.length;
                 }
@@ -309,16 +308,12 @@
 
             if (downloadBtn) {
                 downloadBtn.addEventListener('click', () => {
-                    const files = checkboxes.filter(cb => cb.checked && cb.dataset.kind !== 'dir').map(cb => cb.value);
-                    const hasDir = checkboxes.some(cb => cb.checked && cb.dataset.kind === 'dir');
-                    if (files.length === 0) {
-                        alert('请选择要下载的文件（文件夹不支持批量打包）。');
+                    const selected = checkboxes.filter(cb => cb.checked);
+                    if (selected.length === 0) {
+                        alert('请选择要下载的文件或文件夹。');
                         return;
                     }
-                    if (hasDir && !confirm('选中了文件夹，打包时将忽略它们，仅下载文件。继续？')) {
-                        return;
-                    }
-                    // 直接提交已勾选的文件复选框，避免额外隐藏输入导致重复路径
+                    // 直接提交已勾选的路径，包含文件与文件夹
                     const form = container.querySelector('#zip-form');
                     if (!form) return;
                     form.submit();

@@ -109,32 +109,17 @@ public class IndexModel : PageModel
 
         if (paths == null || paths.Length == 0)
         {
-            ModelState.AddModelError(string.Empty, "请选择要下载的文件。");
+            ModelState.AddModelError(string.Empty, "请选择要下载的文件或文件夹。");
             return Page();
         }
 
-        var streams = new List<(string entryName, Stream fileStream)>();
+        List<(string entryName, Stream fileStream)> streams;
         try
         {
-            foreach (var item in paths)
-            {
-                var entryPath = item?.Trim();
-                if (string.IsNullOrWhiteSpace(entryPath))
-                {
-                    throw new InvalidOperationException("包含无效的路径。");
-                }
-
-                var stream = _resourceStore.OpenRead(SelectedTab, entryPath);
-                streams.Add((entryPath, stream));
-            }
+            streams = _resourceStore.OpenStreamsForZip(SelectedTab, paths);
         }
         catch (Exception ex)
         {
-            foreach (var entry in streams)
-            {
-                entry.fileStream.Dispose();
-            }
-
             _logger.LogError(ex, "批量下载校验失败。Tab: {Tab}; Path: {Path}", SelectedTab, CurrentPath);
             ModelState.AddModelError(string.Empty, $"批量下载失败：{ex.Message}");
             return Page();

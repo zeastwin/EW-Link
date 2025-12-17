@@ -24,4 +24,9 @@ public interface IResourceStore
     void DeleteMany(ResourceTab tab, IEnumerable<string> relativePaths);
 
     void CreateDirectory(ResourceTab tab, string? baseRelativePath, string folderName);
+
+    /// <summary>
+    /// 为批量打包打开文件流，支持目录递归收集。
+    /// </summary>
+    List<(string entryName, Stream fileStream)> OpenStreamsForZip(ResourceTab tab, IEnumerable<string> relativePaths);
 }

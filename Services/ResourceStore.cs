@@ -254,6 +254,79 @@ public class ResourceStore : IResourceStore
         }
     }
 
+    public List<(string entryName, Stream fileStream)> OpenStreamsForZip(ResourceTab tab, IEnumerable<string> relativePaths)
+    {
+        if (relativePaths == null)
+        {
+            throw new ArgumentNullException(nameof(relativePaths));
+        }
+
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var streams = new List<(string entryName, Stream fileStream)>();
+        var deduplicate = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            foreach (var rawPath in relativePaths)
+            {
+                var trimmed = rawPath?.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed))
+                {
+                    throw new InvalidOperationException("包含空的路径参数。");
+                }
+
+                var fullPath = _pathHelper.ResolveSafeFullPath(subRoot, trimmed);
+                if (File.Exists(fullPath))
+                {
+                    var entryName = NormalizeZipEntry(subRoot, fullPath);
+                    if (deduplicate.Add(entryName))
+                    {
+                        streams.Add((entryName, CreateReadStream(fullPath)));
+                    }
+                    continue;
+                }
+
+                if (Directory.Exists(fullPath))
+                {
+                    var files = Directory.GetFiles(fullPath, "*", SearchOption.AllDirectories);
+                    if (files.Length == 0)
+                    {
+                        var dirEntry = NormalizeDirectoryEntry(subRoot, fullPath);
+                        if (deduplicate.Add(dirEntry))
+                        {
+                            streams.Add((dirEntry, new MemoryStream(Array.Empty<byte>())));
+                        }
+                        continue;
+                    }
+
+                    foreach (var file in files)
+                    {
+                        var entryName = NormalizeZipEntry(subRoot, file);
+                        if (deduplicate.Add(entryName))
+                        {
+                            streams.Add((entryName, CreateReadStream(file)));
+                        }
+                    }
+
+                    continue;
+                }
+
+                throw new FileNotFoundException("路径无效或不存在。", fullPath);
+            }
+
+            return streams;
+        }
+        catch
+        {
+            foreach (var item in streams)
+            {
+                item.fileStream.Dispose();
+            }
+
+            throw;
+        }
+    }
+
     private static string CombineRelativePath(string? basePath, string name)
     {
         if (string.IsNullOrEmpty(basePath))
@@ -279,5 +352,30 @@ public class ResourceStore : IResourceStore
         }
 
         return candidate;
+    }
+
+    private static string NormalizeZipEntry(string root, string fullPath)
+    {
+        var relative = Path.GetRelativePath(root, fullPath);
+        if (string.IsNullOrEmpty(relative) || relative == ".")
+        {
+            throw new InvalidOperationException("不能直接打包资源根目录。");
+        }
+        return relative.Replace('\\', '/');
+    }
+
+    private static string NormalizeDirectoryEntry(string root, string fullPath)
+    {
+        var relative = Path.GetRelativePath(root, fullPath).Replace('\\', '/').TrimEnd('/');
+        if (string.IsNullOrEmpty(relative) || relative == ".")
+        {
+            throw new InvalidOperationException("不能直接打包资源根目录。");
+        }
+        return string.IsNullOrEmpty(relative) ? string.Empty : $"{relative}/";
+    }
+
+    private static FileStream CreateReadStream(string fullPath)
+    {
+        return new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
     }
 }
