@@ -7,221 +7,202 @@
     var currentPathDisplay = string.IsNullOrWhiteSpace(Model.CurrentPath) ? "/" : Model.CurrentPath;
 }
 
-<div id="resource-page-content" class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h1 class="h3 mb-1">资源门户</h1>
-            <p class="text-muted mb-0">浏览、上传、下载资源文件</p>
-        </div>
-    </div>
-
-    <ul class="nav nav-tabs mb-3">
-        <li class="nav-item">
-            <a class="nav-link resource-tab-link @ActiveTab(ResourceTab.Permanent)"
-               asp-page="/Resources/Index"
-               asp-route-tab="permanent"
-               asp-route-path="@Model.CurrentPath"
-               asp-route-q="@Model.Filter"
-               asp-route-sort="@Model.SortFieldParam"
-               asp-route-dir="@Model.SortDirectionParam">永久文件夹</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link resource-tab-link @ActiveTab(ResourceTab.Temporary)"
-               asp-page="/Resources/Index"
-               asp-route-tab="temporary"
-               asp-route-path="@Model.CurrentPath"
-               asp-route-q="@Model.Filter"
-               asp-route-sort="@Model.SortFieldParam"
-               asp-route-dir="@Model.SortDirectionParam">临时文件夹</a>
-        </li>
-    </ul>
-
-    @if (TempData["SuccessMessage"] is string successMessage)
-    {
-        <div class="alert alert-success" role="alert">
-            @successMessage
-        </div>
-    }
-    @if (TempData["ErrorMessage"] is string errorMessage)
-    {
-        <div class="alert alert-danger" role="alert">
-            @errorMessage
-        </div>
-    }
-    @if (!ViewData.ModelState.IsValid)
-    {
-        <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
-    }
-
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-                <div>
-                    <div class="fw-semibold text-secondary">当前位置：@Model.Breadcrumbs.Last().Name</div>
-                    <div class="text-muted small">路径：@currentPathDisplay</div>
-                </div>
-                <div class="text-end text-muted small">
-                    <span class="me-3">目录数：@Model.DirectoryCount</span>
-                    <span class="me-3">文件数：@Model.FileCount</span>
-                    <span>总大小：@Model.FormatSize(Model.TotalSize)</span>
-                </div>
+<div id="resource-page-content" class="resource-shell">
+    <section class="glass-panel shadow-sm">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <a class="badge rounded-pill resource-tab-link tab-chip tab-chip-strong @ActiveTab(ResourceTab.Permanent)"
+                   asp-page="/Resources/Index"
+                   asp-route-tab="permanent"
+                   asp-route-path="@Model.CurrentPath"
+                   asp-route-q="@Model.Filter"
+                   asp-route-sort="@Model.SortFieldParam"
+                   asp-route-dir="@Model.SortDirectionParam">永久文件夹</a>
+                <a class="badge rounded-pill resource-tab-link tab-chip tab-chip-strong @ActiveTab(ResourceTab.Temporary)"
+                   asp-page="/Resources/Index"
+                   asp-route-tab="temporary"
+                   asp-route-path="@Model.CurrentPath"
+                   asp-route-q="@Model.Filter"
+                   asp-route-sort="@Model.SortFieldParam"
+                   asp-route-dir="@Model.SortDirectionParam">临时文件夹</a>
             </div>
-
-            <div class="resource-toolbar row g-2 align-items-center mb-3">
-                <div class="col-12 col-lg-6 d-flex flex-wrap align-items-center gap-2">
-                    <form id="upload-form" method="post" enctype="multipart/form-data" asp-page-handler="Upload" class="d-flex flex-wrap align-items-center gap-2">
-                        <input type="hidden" name="tab" value="@Model.SelectedTabString" />
-                        <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
-                        <input type="hidden" name="q" value="@Model.Filter" />
-                        <input type="hidden" name="sort" value="@Model.SortFieldParam" />
-                        <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
-                        <input type="file" name="file" id="upload-file" class="form-control" />
-                        <button type="submit" class="btn btn-success" id="upload-submit">上传文件</button>
-                    </form>
-                    <a class="btn btn-outline-secondary @(!string.IsNullOrWhiteSpace(Model.ParentPath) ? string.Empty : "disabled")"
-                       asp-page="/Resources/Index"
-                       asp-route-tab="@Model.SelectedTabString"
-                       asp-route-path="@Model.ParentPath"
-                       asp-route-q="@Model.Filter"
-                       asp-route-sort="@Model.SortFieldParam"
-                       asp-route-dir="@Model.SortDirectionParam">返回上一级</a>
-                </div>
-
-                <div class="col-12 col-lg-6 d-flex flex-wrap align-items-center gap-2 justify-content-lg-end">
-                    <form method="get" class="d-flex flex-wrap align-items-center gap-2">
-                        <input type="hidden" name="tab" value="@Model.SelectedTabString" />
-                        <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
-                        <input class="form-control flex-grow-1 min-w-0" type="search" name="q" placeholder="文件名过滤" value="@Model.Filter" />
-                        <select class="form-select" name="sort">
-                            <option value="name" selected="@(Model.SortFieldParam == "name")">按名称</option>
-                            <option value="time" selected="@(Model.SortFieldParam == "time")">按时间</option>
-                            <option value="size" selected="@(Model.SortFieldParam == "size")">按大小</option>
-                        </select>
-                        <select class="form-select" name="dir">
-                            <option value="asc" selected="@(Model.SortDirectionParam == "asc")">升序</option>
-                            <option value="desc" selected="@(Model.SortDirectionParam == "desc")">降序</option>
-                        </select>
-                        <button type="submit" class="btn btn-outline-primary">搜索</button>
-                    </form>
-                </div>
+            <div class="text-end small text-muted">
+                <span class="me-3">目录数：@Model.DirectoryCount</span>
+                <span class="me-3">文件数：@Model.FileCount</span>
+                <span>总大小：@Model.FormatSize(Model.TotalSize)</span>
             </div>
+        </div>
 
-            <form method="post" asp-page-handler="DownloadZip" id="zip-form" class="resource-list-form">
-                <input type="hidden" name="tab" value="@Model.SelectedTabString" />
-                <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
-                <input type="hidden" name="q" value="@Model.Filter" />
-                <input type="hidden" name="sort" value="@Model.SortFieldParam" />
-                <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+        @if (TempData["SuccessMessage"] is string successMessage)
+        {
+            <div class="alert alert-success" role="alert">
+                @successMessage
+            </div>
+        }
+        @if (TempData["ErrorMessage"] is string errorMessage)
+        {
+            <div class="alert alert-danger" role="alert">
+                @errorMessage
+            </div>
+        }
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
+        }
 
-                <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
-                    <button type="button" class="btn btn-primary" id="download-zip-btn" disabled>批量下载 ZIP (0)</button>
-                    <button type="button" class="btn btn-outline-danger" id="delete-selected-btn" disabled>删除所选</button>
-                    <div class="text-muted">已选 <span id="selected-count" class="fw-bold">0</span> 项</div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="select-all" />
-                        <label class="form-check-label" for="select-all">全选列表</label>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 breadcrumb-bar">
+            <div class="text-muted small">路径：@currentPathDisplay</div>
+        </div>
+
+        <div class="action-panel row g-3 mb-3 align-items-center">
+            <div class="col-12 col-lg-7 d-flex flex-wrap align-items-center gap-2">
+                <form id="upload-form" method="post" enctype="multipart/form-data" asp-page-handler="Upload" class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
+                    <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+                    <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
+                    <input type="hidden" name="q" value="@Model.Filter" />
+                    <input type="hidden" name="sort" value="@Model.SortFieldParam" />
+                    <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+                    <input type="file" name="file" id="upload-file" class="form-control flex-grow-1" />
+                    <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
+                </form>
+            </div>
+            <div class="col-12 col-lg-5">
+                <form id="sort-form" method="get" class="d-flex flex-wrap align-items-center gap-2 justify-content-lg-end">
+                    <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+                    <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
+                    <input type="hidden" id="sort-hidden" name="sort" value="@Model.SortFieldParam" />
+                    <input type="hidden" id="dir-hidden" name="dir" value="@Model.SortDirectionParam" />
+                    <input class="form-control search-compact" type="search" name="q" placeholder="文件名过滤" value="@Model.Filter" />
+                    <div class="btn-group compact-group" role="group" aria-label="Sort">
+                        <button type="button" data-sort="name" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="name"?"active":"")">名称</button>
+                        <button type="button" data-sort="time" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="time"?"active":"")">时间</button>
+                        <button type="button" data-sort="size" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="size"?"active":"")">大小</button>
                     </div>
-                    <a class="btn btn-outline-secondary @(!string.IsNullOrWhiteSpace(Model.ParentPath) ? string.Empty : "disabled")"
-                       asp-page="/Resources/Index"
-                       asp-route-tab="@Model.SelectedTabString"
-                       asp-route-path="@Model.ParentPath"
-                       asp-route-q="@Model.Filter"
-                       asp-route-sort="@Model.SortFieldParam"
-                       asp-route-dir="@Model.SortDirectionParam">返回上一级</a>
-                </div>
+                    <div class="btn-group compact-group" role="group" aria-label="Dir">
+                        <button type="button" data-dir="asc" class="btn btn-outline-secondary dir-btn @(Model.SortDirectionParam=="asc"?"active":"")">升</button>
+                        <button type="button" data-dir="desc" class="btn btn-outline-secondary dir-btn @(Model.SortDirectionParam=="desc"?"active":"")">降</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
-                <div id="upload-status" class="alert d-none" role="alert"></div>
-                <div id="upload-progress-container" class="progress mb-3 d-none">
-                    <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100">0%</div>
-                </div>
+        <form method="post" asp-page-handler="DownloadZip" id="zip-form" class="resource-list-form">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
+            <input type="hidden" name="q" value="@Model.Filter" />
+            <input type="hidden" name="sort" value="@Model.SortFieldParam" />
+            <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
 
-                <div class="list-group resource-list">
-                    @if (Model.Entries.Count == 0)
+            <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+                <a class="btn btn-return btn-sm back-link"
+                   href="@Url.Page("/Resources/Index", new { tab = Model.SelectedTabString, path = Model.ParentPath, q = Model.Filter, sort = Model.SortFieldParam, dir = Model.SortDirectionParam })">⬅ 返回上一级</a>
+                <button type="button" class="btn btn-primary" id="download-zip-btn" disabled>批量下载 ZIP (0)</button>
+                <button type="button" class="btn btn-outline-danger" id="delete-selected-btn" disabled>删除所选</button>
+                <div class="text-muted">已选 <span id="selected-count" class="fw-bold">0</span> 项</div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="select-all" />
+                    <label class="form-check-label" for="select-all">全选列表</label>
+                </div>
+            </div>
+
+            <div id="upload-status" class="alert d-none" role="alert"></div>
+            <div id="upload-progress-container" class="progress mb-3 d-none">
+                <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100">0%</div>
+            </div>
+
+            <div class="list-group resource-list">
+                @if (Model.Entries.Count == 0)
+                {
+                    <div class="list-group-item text-center text-muted py-4">当前目录为空</div>
+                }
+                else
+                {
+                    @foreach (var entry in Model.Entries)
                     {
-                        <div class="list-group-item text-center text-muted py-4">当前目录为空</div>
-                    }
-                    else
-                    {
-                        @foreach (var entry in Model.Entries)
-                        {
-                            <div class="list-group-item d-flex align-items-center gap-3 resource-item">
-                                <div class="form-check">
+                        <div class="list-group-item d-flex align-items-center gap-3 resource-item @(entry.IsDirectory ? "directory-item" : string.Empty)"
+                             data-url="@(entry.IsDirectory ? Url.Page("/Resources/Index", new { tab = Model.SelectedTabString, path = entry.RelativePath, q = Model.Filter, sort = Model.SortFieldParam, dir = Model.SortDirectionParam }) : string.Empty)">
+                            <div class="form-check">
+                                @if (entry.IsDirectory)
+                                {
+                                    <input class="form-check-input" type="checkbox" disabled />
+                                }
+                                else
+                                {
+                                    <input class="form-check-input entry-checkbox" type="checkbox" name="paths" value="@entry.RelativePath" />
+                                }
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="resource-icon">@((entry.IsDirectory ? "📁" : "📄"))</span>
+                                    <span class="fw-semibold text-primary">@entry.Name</span>
+                                </div>
+                                <div class="text-muted small">
                                     @if (entry.IsDirectory)
                                     {
-                                        <input class="form-check-input" type="checkbox" disabled />
+                                        <span>目录</span>
                                     }
                                     else
                                     {
-                                        <input class="form-check-input entry-checkbox" type="checkbox" name="paths" value="@entry.RelativePath" />
+                                        <span>@Model.FormatSize(entry.SizeBytes)</span>
                                     }
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="resource-icon">@((entry.IsDirectory ? "📁" : "📄"))</span>
-                                        <span class="fw-semibold text-primary">@entry.Name</span>
-                                    </div>
-                                    <div class="text-muted small">
-                                        @if (entry.IsDirectory)
-                                        {
-                                            <span>目录</span>
-                                        }
-                                        else
-                                        {
-                                            <span>@Model.FormatSize(entry.SizeBytes)</span>
-                                        }
-                                        <span class="ms-2">@entry.LastWriteTime.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</span>
-                                    </div>
-                                </div>
-                                <div class="d-flex flex-wrap gap-2">
-                                    @if (entry.IsDirectory)
-                                    {
-                                        <a class="btn btn-outline-primary btn-sm"
-                                           asp-page="/Resources/Index"
-                                           asp-route-tab="@Model.SelectedTabString"
-                                           asp-route-path="@entry.RelativePath"
-                                           asp-route-q="@Model.Filter"
-                                           asp-route-sort="@Model.SortFieldParam"
-                                           asp-route-dir="@Model.SortDirectionParam">进入</a>
-                                    }
-                                    else
-                                    {
-                                        <a class="btn btn-outline-primary btn-sm download-link"
-                                           data-download-url="@Url.Page("/Resources/Index", "Download", new { tab = Model.SelectedTabString, path = entry.RelativePath })">下载</a>
-                                    }
+                                    <span class="ms-2">@entry.LastWriteTime.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</span>
                                 </div>
                             </div>
-                        }
+                            <div class="d-flex flex-wrap gap-2">
+                                @if (entry.IsDirectory)
+                                {
+                                    <a class="btn btn-outline-primary btn-sm"
+                                       asp-page="/Resources/Index"
+                                       asp-route-tab="@Model.SelectedTabString"
+                                       asp-route-path="@entry.RelativePath"
+                                       asp-route-q="@Model.Filter"
+                                       asp-route-sort="@Model.SortFieldParam"
+                                       asp-route-dir="@Model.SortDirectionParam">进入</a>
+                                }
+                                else
+                                {
+                                    <a class="btn btn-outline-primary btn-sm download-link"
+                                       data-download-url="@Url.Page("/Resources/Index", "Download", new { tab = Model.SelectedTabString, path = entry.RelativePath })">下载</a>
+                                }
+                            </div>
+                        </div>
                     }
-                </div>
-            </form>
-            <form method="post" asp-page-handler="Delete" id="delete-form" class="d-none">
-                <input type="hidden" name="tab" value="@Model.SelectedTabString" />
-                <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
-                <input type="hidden" name="q" value="@Model.Filter" />
-                <input type="hidden" name="sort" value="@Model.SortFieldParam" />
-                <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
-                <div id="delete-paths-container"></div>
-            </form>
-        </div>
+                }
+            </div>
+        </form>
+        <form method="post" asp-page-handler="Delete" id="delete-form" class="d-none">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
+            <input type="hidden" name="q" value="@Model.Filter" />
+            <input type="hidden" name="sort" value="@Model.SortFieldParam" />
+            <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <div id="delete-paths-container"></div>
+        </form>
+    </section>
 </div>
 
 @section Scripts {
     <script>
         function initResourcePage(root) {
             const container = root || document;
-            const selectAll = container.getElementById ? container.getElementById('select-all') : container.querySelector('#select-all');
-            const checkboxes = Array.from(container.querySelectorAll?.('.entry-checkbox') ?? []);
-            const selectedCount = container.getElementById ? container.getElementById('selected-count') : container.querySelector('#selected-count');
-            const downloadBtn = container.getElementById ? container.getElementById('download-zip-btn') : container.querySelector('#download-zip-btn');
-            const deleteBtn = container.getElementById ? container.getElementById('delete-selected-btn') : container.querySelector('#delete-selected-btn');
-            const deleteForm = container.getElementById ? container.getElementById('delete-form') : container.querySelector('#delete-form');
-            const deletePathsContainer = container.getElementById ? container.getElementById('delete-paths-container') : container.querySelector('#delete-paths-container');
-            const uploadForm = container.getElementById ? container.getElementById('upload-form') : container.querySelector('#upload-form');
-            const uploadFile = container.getElementById ? container.getElementById('upload-file') : container.querySelector('#upload-file');
-            const uploadBtn = container.getElementById ? container.getElementById('upload-submit') : container.querySelector('#upload-submit');
-            const uploadStatus = container.getElementById ? container.getElementById('upload-status') : container.querySelector('#upload-status');
-            const uploadProgressContainer = container.getElementById ? container.getElementById('upload-progress-container') : container.querySelector('#upload-progress-container');
-            const uploadProgressBar = container.getElementById ? container.getElementById('upload-progress-bar') : container.querySelector('#upload-progress-bar');
+            const selectAll = container.querySelector('#select-all');
+            const checkboxes = Array.from(container.querySelectorAll('.entry-checkbox'));
+            const selectedCount = container.querySelector('#selected-count');
+            const downloadBtn = container.querySelector('#download-zip-btn');
+            const deleteBtn = container.querySelector('#delete-selected-btn');
+            const deleteForm = container.querySelector('#delete-form');
+            const deletePathsContainer = container.querySelector('#delete-paths-container');
+            const uploadForm = container.querySelector('#upload-form');
+            const uploadFile = container.querySelector('#upload-file');
+            const uploadBtn = container.querySelector('#upload-submit');
+            const uploadStatus = container.querySelector('#upload-status');
+            const uploadProgressContainer = container.querySelector('#upload-progress-container');
+            const uploadProgressBar = container.querySelector('#upload-progress-bar');
+            const sortForm = container.querySelector('#sort-form');
+            const sortHidden = container.querySelector('#sort-hidden');
+            const dirHidden = container.querySelector('#dir-hidden');
+            const sortButtons = Array.from(container.querySelectorAll('.sort-btn'));
+            const dirButtons = Array.from(container.querySelectorAll('.dir-btn'));
 
             const updateState = () => {
                 const selected = checkboxes.filter(cb => cb.checked).length;
@@ -240,7 +221,6 @@
             };
 
             checkboxes.forEach(cb => cb.addEventListener('change', updateState));
-
             if (selectAll) {
                 selectAll.addEventListener('change', () => {
                     checkboxes.forEach(cb => {
@@ -264,23 +244,17 @@
                         showUploadStatus('请选择要上传的文件。', 'danger');
                         return;
                     }
-
                     const formData = new FormData(uploadForm);
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', uploadForm.action);
-
                     const token = uploadForm.querySelector('input[name="__RequestVerificationToken"]')?.value;
-                    if (token) {
-                        xhr.setRequestHeader('RequestVerificationToken', token);
-                    }
-
+                    if (token) xhr.setRequestHeader('RequestVerificationToken', token);
                     uploadBtn.disabled = true;
                     if (uploadProgressContainer && uploadProgressBar) {
                         uploadProgressContainer.classList.remove('d-none');
                         uploadProgressBar.style.width = '0%';
                         uploadProgressBar.textContent = '0%';
                     }
-
                     xhr.upload.onprogress = (event) => {
                         if (event.lengthComputable && uploadProgressBar) {
                             const percent = Math.floor((event.loaded / event.total) * 100);
@@ -288,12 +262,10 @@
                             uploadProgressBar.textContent = `${percent}%`;
                         }
                     };
-
                     xhr.onerror = () => {
                         showUploadStatus('上传失败，请重试。', 'danger');
                         uploadBtn.disabled = false;
                     };
-
                     xhr.onload = () => {
                         if (xhr.status >= 200 && xhr.status < 300) {
                             showUploadStatus('上传成功，正在刷新列表...', 'success');
@@ -303,7 +275,6 @@
                             uploadBtn.disabled = false;
                         }
                     };
-
                     xhr.send(formData);
                 });
             }
@@ -313,12 +284,12 @@
                     const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
                     if (selected.length === 0) return;
                     if (!confirm(`确定批量下载选中的 ${selected.length} 个文件？`)) return;
-                    const form = container.getElementById ? container.getElementById('zip-form') : document.querySelector('#zip-form');
+                    const form = container.querySelector('#zip-form');
                     form?.submit();
                 });
             }
 
-            const downloadLinks = Array.from(container.querySelectorAll?.('.download-link') ?? []);
+            const downloadLinks = Array.from(container.querySelectorAll('.download-link'));
             downloadLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -349,9 +320,10 @@
                 });
             }
 
-            const tabLinks = Array.from(container.querySelectorAll?.('.resource-tab-link') ?? []);
+            const tabLinks = Array.from(container.querySelectorAll('.resource-tab-link'));
             const contentRoot = document.getElementById('resource-page-content');
-
+            const directoryItems = Array.from(container.querySelectorAll('.directory-item[data-url]'));
+            const backLinks = Array.from(container.querySelectorAll('.back-link'));
             const loadPage = (url, push) => {
                 if (!contentRoot) return;
                 fetch(url, { headers: { 'X-Requested-With': 'Fetch' } })
@@ -361,11 +333,8 @@
                         const doc = parser.parseFromString(html, 'text/html');
                         const newContent = doc.getElementById('resource-page-content');
                         if (newContent) {
-                            // 保持原容器，避免布局抖动
                             contentRoot.innerHTML = newContent.innerHTML;
-                            if (push) {
-                                history.pushState({}, '', url);
-                            }
+                            if (push) history.pushState({}, '', url);
                             initResourcePage(contentRoot);
                         }
                     })
@@ -381,14 +350,55 @@
                 });
             });
 
-            window.onpopstate = () => {
-                loadPage(location.href, false);
-            };
+            directoryItems.forEach(item => {
+                item.addEventListener('dblclick', () => {
+                    const url = item.getAttribute('data-url');
+                    if (!url) return;
+                    loadPage(url, true);
+                });
+            });
 
+            backLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const url = link.getAttribute('href');
+                    if (!url) return;
+                    loadPage(url, true);
+                });
+            });
+
+            window.onpopstate = () => loadPage(location.href, false);
+
+            sortButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    sortButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    if (sortHidden) sortHidden.value = btn.dataset.sort;
+                    if (sortForm) sortForm.submit();
+                });
+            });
+
+            dirButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    dirButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    if (dirHidden) dirHidden.value = btn.dataset.dir;
+                    if (sortForm) sortForm.submit();
+                });
+            });
+
+            if (sortForm) {
+                sortForm.addEventListener('submit', (e) => {
+                    // ensure hidden values are aligned; active classes already set
+                    const activeSort = sortButtons.find(b => b.classList.contains('active'));
+                    const activeDir = dirButtons.find(b => b.classList.contains('active'));
+                    if (activeSort && sortHidden) sortHidden.value = activeSort.dataset.sort;
+                    if (activeDir && dirHidden) dirHidden.value = activeDir.dataset.dir;
+                });
+            }
             updateState();
         }
 
         window.addEventListener('DOMContentLoaded', () => initResourcePage(document));
     </script>
 }
-</div>
