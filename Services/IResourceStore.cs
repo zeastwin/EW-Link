@@ -22,4 +22,6 @@ public interface IResourceStore
     void Delete(ResourceTab tab, string relativePath);
 
     void DeleteMany(ResourceTab tab, IEnumerable<string> relativePaths);
+
+    void CreateDirectory(ResourceTab tab, string? baseRelativePath, string folderName);
 }

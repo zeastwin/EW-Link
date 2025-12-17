@@ -158,6 +158,33 @@ public class IndexModel : PageModel
         return new EmptyResult();
     }
 
+    public IActionResult OnPostCreateDirectory([FromForm] string? tab, [FromForm] string? path, [FromForm] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? folderName)
+    {
+        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        {
+            return errorResult!;
+        }
+
+        if (string.IsNullOrWhiteSpace(folderName))
+        {
+            TempData["ErrorMessage"] = "文件夹名称不能为空。";
+            return RedirectToPage("/Resources/Index", new { tab = SelectedTabString, path = CurrentPath, q = Filter, sort = SortFieldParam, dir = SortDirectionParam });
+        }
+
+        try
+        {
+            _resourceStore.CreateDirectory(SelectedTab, CurrentPath, folderName.Trim());
+            TempData["SuccessMessage"] = $"已创建文件夹：{folderName}";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or DirectoryNotFoundException)
+        {
+            _logger.LogWarning(ex, "创建文件夹失败。Tab: {Tab}; Path: {Path}; Name: {Name}", SelectedTab, CurrentPath, folderName);
+            TempData["ErrorMessage"] = $"创建失败：{ex.Message}";
+        }
+
+        return RedirectToPage("/Resources/Index", new { tab = SelectedTabString, path = CurrentPath, q = Filter, sort = SortFieldParam, dir = SortDirectionParam });
+    }
+
     public IActionResult OnPostDelete([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string[]? paths, [FromForm] string? target)
     {
         if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))

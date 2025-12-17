@@ -128,6 +128,24 @@ public class ResourceStore : IResourceStore
         }
     }
 
+    public void CreateDirectory(ResourceTab tab, string? baseRelativePath, string folderName)
+    {
+        if (string.IsNullOrWhiteSpace(folderName))
+        {
+            throw new InvalidOperationException("文件夹名称不能为空。");
+        }
+
+        if (folderName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new InvalidOperationException("文件夹名称包含非法字符。");
+        }
+
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var targetPath = _pathHelper.ResolveSafeFullPath(subRoot, CombineRelativePath(baseRelativePath, folderName));
+        Directory.CreateDirectory(targetPath);
+        _logger.LogInformation("Created directory: {Path}", targetPath);
+    }
+
     public async Task<ResourceEntry> SaveUpload(ResourceTab tab, string? relativePath, IFormFile file, CancellationToken cancellationToken = default)
     {
         if (file == null)

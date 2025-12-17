@@ -86,6 +86,15 @@
             </div>
         </div>
 
+        <form id="create-folder-form" method="post" asp-page-handler="CreateDirectory" class="d-none">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
+            <input type="hidden" name="q" value="@Model.Filter" />
+            <input type="hidden" name="sort" value="@Model.SortFieldParam" />
+            <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" id="create-folder-name" name="folderName" />
+        </form>
+
         <form method="post" asp-page-handler="DownloadZip" id="zip-form" class="resource-list-form">
             <input type="hidden" name="tab" value="@Model.SelectedTabString" />
             <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
@@ -103,6 +112,7 @@
                     <input class="form-check-input" type="checkbox" id="select-all" />
                     <label class="form-check-label" for="select-all">全选列表</label>
                 </div>
+                <button type="button" id="create-folder-btn" class="btn btn-outline-primary btn-sm">新建文件夹</button>
             </div>
 
             <div id="upload-status" class="alert d-none" role="alert"></div>
@@ -124,11 +134,11 @@
                             <div class="form-check">
                                 @if (entry.IsDirectory)
                                 {
-                                    <input class="form-check-input" type="checkbox" disabled />
+                                    <input class="form-check-input entry-checkbox" type="checkbox" value="@entry.RelativePath" data-kind="dir" />
                                 }
                                 else
                                 {
-                                    <input class="form-check-input entry-checkbox" type="checkbox" name="paths" value="@entry.RelativePath" />
+                                    <input class="form-check-input entry-checkbox" type="checkbox" name="paths" value="@entry.RelativePath" data-kind="file" />
                                 }
                             </div>
                             <div class="flex-grow-1">
@@ -203,13 +213,18 @@
             const dirHidden = container.querySelector('#dir-hidden');
             const sortButtons = Array.from(container.querySelectorAll('.sort-btn'));
             const dirButtons = Array.from(container.querySelectorAll('.dir-btn'));
+            const createFolderForm = container.querySelector('#create-folder-form');
+            const createFolderBtn = container.querySelector('#create-folder-btn');
+            const createFolderName = container.querySelector('#create-folder-name');
 
             const updateState = () => {
-                const selected = checkboxes.filter(cb => cb.checked).length;
+                const selectedItems = checkboxes.filter(cb => cb.checked);
+                const selected = selectedItems.length;
+                const selectedFiles = selectedItems.filter(cb => cb.dataset.kind !== 'dir').length;
                 if (selectedCount) selectedCount.textContent = selected.toString();
                 if (downloadBtn) {
-                    downloadBtn.textContent = `批量下载 ZIP (${selected})`;
-                    downloadBtn.disabled = selected === 0;
+                    downloadBtn.textContent = `批量下载 ZIP (${selectedFiles})`;
+                    downloadBtn.disabled = selectedFiles === 0;
                 }
                 if (deleteBtn) {
                     deleteBtn.disabled = selected === 0;
@@ -279,13 +294,45 @@
                 });
             }
 
+            if (createFolderForm && createFolderBtn && createFolderName) {
+                createFolderBtn.addEventListener('click', () => {
+                    const name = prompt('请输入新文件夹名称');
+                    if (!name) return;
+                    const trimmed = name.trim();
+                    if (!trimmed) return;
+                    createFolderName.value = trimmed;
+                    createFolderForm.submit();
+                });
+            }
+
             if (downloadBtn) {
                 downloadBtn.addEventListener('click', () => {
-                    const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
-                    if (selected.length === 0) return;
-                    if (!confirm(`确定批量下载选中的 ${selected.length} 个文件？`)) return;
+                    const files = checkboxes.filter(cb => cb.checked && cb.dataset.kind !== 'dir').map(cb => cb.value);
+                    const hasDir = checkboxes.some(cb => cb.checked && cb.dataset.kind === 'dir');
+                    if (files.length === 0) {
+                        alert('请选择要下载的文件（文件夹不支持批量打包）。');
+                        return;
+                    }
+                    if (hasDir && !confirm('选中了文件夹，打包时将忽略它们，仅下载文件。继续？')) {
+                        return;
+                    }
+                    // 创建临时隐藏容器确保只提交文件路径
                     const form = container.querySelector('#zip-form');
-                    form?.submit();
+                    if (!form) return;
+                    let temp = form.querySelector('#zip-temp-paths');
+                    if (temp) temp.remove();
+                    temp = document.createElement('div');
+                    temp.id = 'zip-temp-paths';
+                    temp.classList.add('d-none');
+                    files.forEach(val => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'paths';
+                        input.value = val;
+                        temp.appendChild(input);
+                    });
+                    form.appendChild(temp);
+                    form.submit();
                 });
             }
 
