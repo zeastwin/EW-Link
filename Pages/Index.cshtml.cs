@@ -5,9 +5,6 @@ namespace EW_Link.Pages
 {
     public class IndexModel : PageModel
     {
-        public void OnGet()
-        {
-
-        }
+        public IActionResult OnGet() => RedirectToPage("/Resources/Index");
     }
 }
