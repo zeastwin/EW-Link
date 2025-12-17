@@ -21,6 +21,7 @@ body {
   margin: 0;
   background: linear-gradient(180deg, #f8fafc 0%, #f3f6fb 100%);
   color: #1f2937;
+  overflow-y: scroll; /* Reserve scrollbar space to avoid layout shift when content height changes */
 }
 
 .form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
