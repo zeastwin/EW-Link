@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.IO.Pipelines;
 using EW_Link.Models;
 using EW_Link.Services;
 using Microsoft.AspNetCore.Http;
@@ -144,7 +145,9 @@ public class IndexModel : PageModel
 
         try
         {
-            await _zipStreamService.WriteZipAsync(Response.Body, streams, HttpContext.RequestAborted);
+            // 使用 BodyWriter 生成的流避免 Kestrel 禁用同步 IO 时 ZipArchive 的同步写入报错
+            await using var responseStream = Response.BodyWriter.AsStream(leaveOpen: true);
+            await _zipStreamService.WriteZipAsync(responseStream, streams, HttpContext.RequestAborted);
             _logger.LogInformation("批量下载 ZIP 成功，条目数：{Count}，Tab: {Tab}, Path: {Path}", streams.Count, SelectedTab, CurrentPath);
         }
         finally
