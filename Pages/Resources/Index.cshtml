@@ -7,7 +7,7 @@
     var currentPathDisplay = string.IsNullOrWhiteSpace(Model.CurrentPath) ? "/" : Model.CurrentPath;
 }
 
-<div class="container py-4">
+<div id="resource-page-content" class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h1 class="h3 mb-1">资源门户</h1>
@@ -17,7 +17,7 @@
 
     <ul class="nav nav-tabs mb-3">
         <li class="nav-item">
-            <a class="nav-link @ActiveTab(ResourceTab.Permanent)"
+            <a class="nav-link resource-tab-link @ActiveTab(ResourceTab.Permanent)"
                asp-page="/Resources/Index"
                asp-route-tab="permanent"
                asp-route-path="@Model.CurrentPath"
@@ -26,7 +26,7 @@
                asp-route-dir="@Model.SortDirectionParam">永久文件夹</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link @ActiveTab(ResourceTab.Temporary)"
+            <a class="nav-link resource-tab-link @ActiveTab(ResourceTab.Temporary)"
                asp-page="/Resources/Index"
                asp-route-tab="temporary"
                asp-route-path="@Model.CurrentPath"
@@ -203,28 +203,29 @@
                 <div id="delete-paths-container"></div>
             </form>
         </div>
-    </div>
+</div>
 
 @section Scripts {
     <script>
-        window.addEventListener('DOMContentLoaded', () => {
-            const selectAll = document.getElementById('select-all');
-            const checkboxes = Array.from(document.querySelectorAll('.entry-checkbox'));
-            const selectedCount = document.getElementById('selected-count');
-            const downloadBtn = document.getElementById('download-zip-btn');
-            const deleteBtn = document.getElementById('delete-selected-btn');
-            const deleteForm = document.getElementById('delete-form');
-            const deletePathsContainer = document.getElementById('delete-paths-container');
-            const uploadForm = document.getElementById('upload-form');
-            const uploadFile = document.getElementById('upload-file');
-            const uploadBtn = document.getElementById('upload-submit');
-            const uploadStatus = document.getElementById('upload-status');
-            const uploadProgressContainer = document.getElementById('upload-progress-container');
-            const uploadProgressBar = document.getElementById('upload-progress-bar');
+        function initResourcePage(root) {
+            const container = root || document;
+            const selectAll = container.getElementById ? container.getElementById('select-all') : container.querySelector('#select-all');
+            const checkboxes = Array.from(container.querySelectorAll?.('.entry-checkbox') ?? []);
+            const selectedCount = container.getElementById ? container.getElementById('selected-count') : container.querySelector('#selected-count');
+            const downloadBtn = container.getElementById ? container.getElementById('download-zip-btn') : container.querySelector('#download-zip-btn');
+            const deleteBtn = container.getElementById ? container.getElementById('delete-selected-btn') : container.querySelector('#delete-selected-btn');
+            const deleteForm = container.getElementById ? container.getElementById('delete-form') : container.querySelector('#delete-form');
+            const deletePathsContainer = container.getElementById ? container.getElementById('delete-paths-container') : container.querySelector('#delete-paths-container');
+            const uploadForm = container.getElementById ? container.getElementById('upload-form') : container.querySelector('#upload-form');
+            const uploadFile = container.getElementById ? container.getElementById('upload-file') : container.querySelector('#upload-file');
+            const uploadBtn = container.getElementById ? container.getElementById('upload-submit') : container.querySelector('#upload-submit');
+            const uploadStatus = container.getElementById ? container.getElementById('upload-status') : container.querySelector('#upload-status');
+            const uploadProgressContainer = container.getElementById ? container.getElementById('upload-progress-container') : container.querySelector('#upload-progress-container');
+            const uploadProgressBar = container.getElementById ? container.getElementById('upload-progress-bar') : container.querySelector('#upload-progress-bar');
 
             const updateState = () => {
                 const selected = checkboxes.filter(cb => cb.checked).length;
-                selectedCount.textContent = selected.toString();
+                if (selectedCount) selectedCount.textContent = selected.toString();
                 if (downloadBtn) {
                     downloadBtn.textContent = `批量下载 ZIP (${selected})`;
                     downloadBtn.disabled = selected === 0;
@@ -312,12 +313,12 @@
                     const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
                     if (selected.length === 0) return;
                     if (!confirm(`确定批量下载选中的 ${selected.length} 个文件？`)) return;
-                    const form = document.getElementById('zip-form');
+                    const form = container.getElementById ? container.getElementById('zip-form') : document.querySelector('#zip-form');
                     form?.submit();
                 });
             }
 
-            const downloadLinks = Array.from(document.querySelectorAll('.download-link'));
+            const downloadLinks = Array.from(container.querySelectorAll?.('.download-link') ?? []);
             downloadLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -348,8 +349,46 @@
                 });
             }
 
+            const tabLinks = Array.from(container.querySelectorAll?.('.resource-tab-link') ?? []);
+            const contentRoot = document.getElementById('resource-page-content');
+
+            const loadPage = (url, push) => {
+                if (!contentRoot) return;
+                fetch(url, { headers: { 'X-Requested-With': 'Fetch' } })
+                    .then(res => res.text())
+                    .then(html => {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const newContent = doc.getElementById('resource-page-content');
+                        if (newContent) {
+                            // 保持原容器，避免布局抖动
+                            contentRoot.innerHTML = newContent.innerHTML;
+                            if (push) {
+                                history.pushState({}, '', url);
+                            }
+                            initResourcePage(contentRoot);
+                        }
+                    })
+                    .catch(err => console.warn('局部加载失败：', err));
+            };
+
+            tabLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const url = link.getAttribute('href');
+                    if (!url) return;
+                    loadPage(url, true);
+                });
+            });
+
+            window.onpopstate = () => {
+                loadPage(location.href, false);
+            };
+
             updateState();
-        });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => initResourcePage(document));
     </script>
 }
 </div>
