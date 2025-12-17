@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.IO.Pipelines;
+using System.IO.Compression;
+using System.Text;
 using EW_Link.Models;
 using EW_Link.Services;
 using Microsoft.AspNetCore.Http;
@@ -17,9 +19,14 @@ namespace EW_Link.Pages.Resources;
 public class IndexModel : PageModel
 {
     private const long UploadLimitBytes = 1024L * 1024 * 1024;
+    private const long PreviewLimitBytes = 20L * 1024 * 1024;
     private readonly IResourceStore _resourceStore;
     private readonly ILogger<IndexModel> _logger;
     private readonly IZipStreamService _zipStreamService;
+    private static readonly HashSet<string> TextPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".log", ".json", ".xml", ".cs", ".js", ".css", ".html", ".md", ".ini", ".config"
+    };
 
     public IndexModel(IResourceStore resourceStore, ILogger<IndexModel> logger, IZipStreamService zipStreamService)
     {
@@ -254,6 +261,131 @@ public class IndexModel : PageModel
         }
     }
 
+    public async Task<IActionResult> OnGetPreview([FromQuery] string? tab, [FromQuery] string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return BadRequest(new { message = "Path is required." });
+        }
+
+        var selectedTab = ParseTab(tab);
+        try
+        {
+            using var stream = _resourceStore.OpenRead(selectedTab, path);
+            var fileName = Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return BadRequest(new { message = "Path is required." });
+            }
+
+            if (stream.Length > PreviewLimitBytes)
+            {
+                return new JsonResult(new { success = false, message = "文件过大，超过预览限制。" });
+            }
+
+            var provider = new FileExtensionContentTypeProvider();
+            if (!provider.TryGetContentType(fileName, out var contentType))
+            {
+                contentType = "application/octet-stream";
+            }
+
+            if (IsTextPreview(fileName, contentType))
+            {
+                stream.Position = 0;
+                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 4096, leaveOpen: true);
+                var content = await reader.ReadToEndAsync();
+                return new JsonResult(new { success = true, kind = "text", content, contentType });
+            }
+
+            if (IsImagePreview(contentType))
+            {
+                var previewUrl = BuildPreviewFileUrl(selectedTab, path);
+                return new JsonResult(new { success = true, kind = "image", previewUrl, contentType });
+            }
+
+            if (IsAudioPreview(contentType))
+            {
+                var previewUrl = BuildPreviewFileUrl(selectedTab, path);
+                return new JsonResult(new { success = true, kind = "audio", previewUrl, contentType });
+            }
+
+            if (IsVideoPreview(contentType))
+            {
+                var previewUrl = BuildPreviewFileUrl(selectedTab, path);
+                return new JsonResult(new { success = true, kind = "video", previewUrl, contentType });
+            }
+
+            if (IsPdfPreview(contentType, fileName))
+            {
+                var previewUrl = BuildPreviewFileUrl(selectedTab, path);
+                return new JsonResult(new { success = true, kind = "pdf", previewUrl, contentType });
+            }
+
+            if (IsZipPreview(contentType, fileName))
+            {
+                stream.Position = 0;
+                using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
+                var entries = archive.Entries.Take(200)
+                    .Select(e => new { name = e.FullName, size = e.Length })
+                    .ToList();
+                var truncated = archive.Entries.Count > entries.Count;
+                return new JsonResult(new { success = true, kind = "zip", entries, truncated });
+            }
+
+            return new JsonResult(new { success = false, message = "暂不支持该文件类型预览。" });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException or InvalidDataException)
+        {
+            _logger.LogWarning(ex, "预览失败，路径 {Path}，Tab {Tab}", path, selectedTab);
+            return new JsonResult(new { success = false, message = "预览失败：路径无效或文件不支持。" });
+        }
+    }
+
+    public IActionResult OnGetPreviewFile([FromQuery] string? tab, [FromQuery] string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return BadRequest("Path is required.");
+        }
+
+        var selectedTab = ParseTab(tab);
+        FileStream? stream = null;
+        try
+        {
+            stream = _resourceStore.OpenRead(selectedTab, path);
+            if (stream == null)
+            {
+                throw new InvalidOperationException("无法打开文件流。");
+            }
+            var fileName = Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = "preview";
+            }
+
+            var provider = new FileExtensionContentTypeProvider();
+            if (!provider.TryGetContentType(fileName, out var contentType))
+            {
+                contentType = "application/octet-stream";
+            }
+
+            if (stream.Length > PreviewLimitBytes)
+            {
+                stream.Dispose();
+                return BadRequest("文件过大，超过预览限制。");
+            }
+
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return File(stream, contentType);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            stream?.Dispose();
+            _logger.LogWarning(ex, "预览文件流失败，路径 {Path}，Tab {Tab}", path, selectedTab);
+            return BadRequest("预览失败：路径无效或不支持。");
+        }
+    }
+
     private ResourceTab ParseTab(string? tab)
     {
         return string.Equals(tab, "temporary", StringComparison.OrdinalIgnoreCase)
@@ -367,4 +499,48 @@ public class IndexModel : PageModel
     }
 
     public record BreadcrumbItem(string Name, string RelativePath);
+
+    private static bool IsTextPreview(string fileName, string contentType)
+    {
+        var ext = Path.GetExtension(fileName);
+        return contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)
+               || TextPreviewExtensions.Contains(ext)
+               || string.Equals(contentType, "application/json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsImagePreview(string contentType)
+    {
+        return contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAudioPreview(string contentType)
+    {
+        return contentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsVideoPreview(string contentType)
+    {
+        return contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPdfPreview(string contentType, string fileName)
+    {
+        return string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(Path.GetExtension(fileName), ".pdf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsZipPreview(string contentType, string fileName)
+    {
+        return string.Equals(contentType, "application/zip", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string BuildPreviewFileUrl(ResourceTab tab, string path)
+    {
+        return Url.Page("/Resources/Index", "PreviewFile", new
+        {
+            tab = tab == ResourceTab.Temporary ? "temporary" : "permanent",
+            path
+        }) ?? string.Empty;
+    }
 }

@@ -175,6 +175,10 @@
                                 }
                                 else
                                 {
+                                    <button type="button"
+                                            class="btn btn-outline-secondary btn-sm preview-btn"
+                                            data-preview-url="@Url.Page("/Resources/Index", "Preview", new { tab = Model.SelectedTabString, path = entry.RelativePath })"
+                                            data-name="@entry.Name">预览</button>
                                     <a class="btn btn-outline-primary btn-sm download-link"
                                        data-download-url="@Url.Page("/Resources/Index", "Download", new { tab = Model.SelectedTabString, path = entry.RelativePath })">下载</a>
                                 }
@@ -193,6 +197,22 @@
             <div id="delete-paths-container"></div>
         </form>
     </section>
+</div>
+
+<div class="modal fade" id="preview-modal" tabindex="-1" aria-labelledby="preview-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="preview-modal-title">文件预览</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="preview-loading" class="text-muted">加载中...</div>
+                <div id="preview-message" class="alert alert-warning d-none"></div>
+                <div id="preview-content" class="mt-2"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
@@ -220,6 +240,13 @@
             const createFolderForm = container.querySelector('#create-folder-form');
             const createFolderBtn = container.querySelector('#create-folder-btn');
             const createFolderName = container.querySelector('#create-folder-name');
+            const previewButtons = Array.from(container.querySelectorAll('.preview-btn'));
+            const previewModalEl = document.getElementById('preview-modal');
+            const previewTitle = document.getElementById('preview-modal-title');
+            const previewContent = document.getElementById('preview-content');
+            const previewMessage = document.getElementById('preview-message');
+            const previewLoading = document.getElementById('preview-loading');
+            const previewModal = window.bootstrap && previewModalEl ? new bootstrap.Modal(previewModalEl) : null;
 
                 const updateState = () => {
                     const selectedItems = checkboxes.filter(cb => cb.checked);
@@ -307,6 +334,142 @@
                     createFolderForm.submit();
                 });
             }
+
+            const formatBytes = (size) => {
+                if (size === undefined || size === null || Number.isNaN(Number(size))) return '';
+                let value = Number(size);
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let unitIndex = 0;
+                while (value >= 1024 && unitIndex < units.length - 1) {
+                    value /= 1024;
+                    unitIndex++;
+                }
+                return `${value.toFixed(value >= 10 ? 0 : 2)} ${units[unitIndex]}`;
+            };
+
+            const showPreviewMessage = (message) => {
+                if (!previewMessage) return;
+                previewMessage.textContent = message;
+                previewMessage.classList.remove('d-none');
+            };
+
+            const resetPreview = (title) => {
+                if (previewTitle && title) previewTitle.textContent = title;
+                if (previewContent) previewContent.innerHTML = '';
+                if (previewMessage) previewMessage.classList.add('d-none');
+                if (previewLoading) previewLoading.classList.remove('d-none');
+            };
+
+            const openPreviewModal = () => {
+                if (previewModal) {
+                    previewModal.show();
+                    return;
+                }
+                if (previewModalEl) {
+                    previewModalEl.classList.add('show', 'd-block');
+                }
+            };
+
+            const renderPreview = (data) => {
+                if (!previewContent || !data) return;
+                previewLoading?.classList.add('d-none');
+                previewMessage?.classList.add('d-none');
+                const kind = data.kind;
+                if (!data.success) {
+                    showPreviewMessage(data.message || '预览失败。');
+                    return;
+                }
+                if (kind === 'text') {
+                    const pre = document.createElement('pre');
+                    pre.className = 'bg-light p-3 rounded border preview-text';
+                    pre.textContent = data.content || '';
+                    previewContent.appendChild(pre);
+                    return;
+                }
+                if (kind === 'image') {
+                    const img = document.createElement('img');
+                    img.src = data.previewUrl;
+                    img.alt = '预览图片';
+                    img.className = 'img-fluid';
+                    previewContent.appendChild(img);
+                    return;
+                }
+                if (kind === 'audio') {
+                    const audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.className = 'w-100';
+                    const source = document.createElement('source');
+                    source.src = data.previewUrl;
+                    audio.appendChild(source);
+                    previewContent.appendChild(audio);
+                    return;
+                }
+                if (kind === 'video') {
+                    const video = document.createElement('video');
+                    video.controls = true;
+                    video.className = 'w-100';
+                    video.style.maxHeight = '70vh';
+                    const source = document.createElement('source');
+                    source.src = data.previewUrl;
+                    video.appendChild(source);
+                    previewContent.appendChild(video);
+                    return;
+                }
+                if (kind === 'pdf') {
+                    const frame = document.createElement('iframe');
+                    frame.src = data.previewUrl;
+                    frame.className = 'w-100 border';
+                    frame.style.minHeight = '480px';
+                    previewContent.appendChild(frame);
+                    return;
+                }
+                if (kind === 'zip') {
+                    const info = document.createElement('div');
+                    info.className = 'small text-muted mb-2';
+                    info.textContent = data.truncated ? '仅显示前 200 条。' : '全部条目。';
+                    previewContent.appendChild(info);
+                    const list = document.createElement('ul');
+                    list.className = 'list-group preview-zip-list';
+                    (data.entries || []).forEach(e => {
+                        const item = document.createElement('li');
+                        item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        const name = document.createElement('span');
+                        name.textContent = e.name || '';
+                        const size = document.createElement('span');
+                        size.className = 'badge bg-secondary rounded-pill';
+                        size.textContent = formatBytes(e.size);
+                        item.appendChild(name);
+                        item.appendChild(size);
+                        list.appendChild(item);
+                    });
+                    previewContent.appendChild(list);
+                    return;
+                }
+
+                showPreviewMessage('暂不支持该文件类型预览。');
+            };
+
+            const loadPreview = (url, name) => {
+                if (!url) return;
+                resetPreview(name || '预览');
+                openPreviewModal();
+                fetch(url, { headers: { 'X-Requested-With': 'Fetch', 'Accept': 'application/json' } })
+                    .then(res => res.ok ? res.json() : Promise.reject())
+                    .then(data => renderPreview(data))
+                    .catch(() => {
+                        previewLoading?.classList.add('d-none');
+                        showPreviewMessage('预览失败，请稍后重试。');
+                    });
+            };
+
+            previewButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const url = btn.getAttribute('data-preview-url');
+                    const name = btn.getAttribute('data-name') || '预览';
+                    loadPreview(url, name);
+                });
+            });
 
             if (downloadBtn) {
                 downloadBtn.addEventListener('click', () => {
