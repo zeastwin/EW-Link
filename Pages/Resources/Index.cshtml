@@ -75,15 +75,7 @@
                     <input type="hidden" id="sort-hidden" name="sort" value="@Model.SortFieldParam" />
                     <input type="hidden" id="dir-hidden" name="dir" value="@Model.SortDirectionParam" />
                     <input class="form-control search-compact" type="search" name="q" placeholder="文件名过滤" value="@Model.Filter" />
-                    <div class="btn-group compact-group" role="group" aria-label="Sort">
-                        <button type="button" data-sort="name" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="name"?"active":"")">名称</button>
-                        <button type="button" data-sort="time" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="time"?"active":"")">时间</button>
-                        <button type="button" data-sort="size" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="size"?"active":"")">大小</button>
-                    </div>
-                    <div class="btn-group compact-group" role="group" aria-label="Dir">
-                        <button type="button" data-dir="asc" class="btn btn-outline-secondary dir-btn @(Model.SortDirectionParam=="asc"?"active":"")">升</button>
-                        <button type="button" data-dir="desc" class="btn btn-outline-secondary dir-btn @(Model.SortDirectionParam=="desc"?"active":"")">降</button>
-                    </div>
+                    <button type="submit" class="btn btn-outline-primary">搜索</button>
                 </form>
             </div>
         </div>
@@ -115,6 +107,17 @@
                     <label class="form-check-label" for="select-all">全选列表</label>
                 </div>
                 <button type="button" id="create-folder-btn" class="btn btn-outline-primary btn-sm">新建文件夹</button>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="btn-group compact-group" role="group" aria-label="Sort">
+                        <button type="button" data-sort="name" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="name"?"active":"")">名称</button>
+                        <button type="button" data-sort="time" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="time"?"active":"")">时间</button>
+                        <button type="button" data-sort="size" class="btn btn-outline-primary sort-btn @(Model.SortFieldParam=="size"?"active":"")">大小</button>
+                    </div>
+                    <div class="btn-group compact-group" role="group" aria-label="Dir">
+                        <button type="button" data-dir="asc" class="btn btn-outline-secondary dir-btn @(Model.SortDirectionParam=="asc"?"active":"")">升</button>
+                        <button type="button" data-dir="desc" class="btn btn-outline-secondary dir-btn @(Model.SortDirectionParam=="desc"?"active":"")">降</button>
+                    </div>
+                </div>
             </div>
 
             <div id="upload-status" class="alert d-none" role="alert"></div>
