@@ -15,15 +15,16 @@
 - 数据保护密钥持久化至 `/Data/aspnet-keys`。
 
 ## 关键服务与安全措施
-- `ResourceStore`（`Services/ResourceStore.cs`）：列目录、上传、删除、单文件读取；校验文件/文件夹名；同名冲突追加 ` (n)`；支持删除文件或目录。
+- `ResourceStore`（`Services/ResourceStore.cs`）：列目录、上传、删除、单文件读取；校验文件/文件夹名；同名冲突追加 ` (n)`；支持删除文件或目录；批量打包时可递归收集文件夹（含空目录占位），去重并阻止直接打包资源根。
 - `ResourcePathHelper`：归一化子根路径，拒绝根路径、`..`、无效字符或驱动器标记，阻止越界访问。
-- `ZipStreamService`：将多文件流式写入 ZIP，归一化条目名称，不关闭 HTTP 响应流。
+- `ZipStreamService`：将多文件流式写入 ZIP，归一化条目名称，不关闭 HTTP 响应流；页面处理下载时使用 `Response.BodyWriter.AsStream` 适配禁用同步 IO。
 - `TemporaryCleanupService`：每小时清理临时目录，删除 24 小时前的文件并移除空目录。
 
 ## UI 行为（`Pages/Resources/Index`）
 - 查询参数：`tab`（`permanent`/`temporary`）、`path`、`q`（名称过滤）、`sort`（`name`/`time`/`size`）、`dir`（`asc`/`desc`）。
-- 功能：带进度的 AJAX 上传、弹窗创建文件夹、选中文件批量 ZIP（忽略文件夹）、批量删除、面包屑/返回、双击进入目录、客户端计数已选项。
+- 功能：带进度的 AJAX 上传、弹窗创建文件夹、选中文件/文件夹批量 ZIP（目录递归打包，空目录占位）、批量删除、面包屑/返回、双击进入目录、客户端计数已选项。
 - 统计信息（目录/文件数、总大小）服务器端计算。
+- 排序/升降按钮位于操作条右侧，与“新建文件夹”同行；搜索框回车触发，无单独搜索按钮。
 
 ## 运行与部署
 - 本地：`dotnet run --project EW-Link.csproj`（需 .NET 10 预览 SDK），启动时自动确保资源根目录存在。
