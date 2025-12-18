@@ -39,6 +39,7 @@ builder.Services.AddSingleton<IZipStreamService, ZipStreamService>();
 builder.Services.AddSingleton<IShareLinkService, ShareLinkService>();
 builder.Services.AddHostedService<TemporaryCleanupService>();
 builder.Services.AddHostedService<TrashCleanupService>();
+builder.Services.AddHostedService<UploadCleanupService>();
 
 builder.Services.AddRazorPages();
 

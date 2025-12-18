@@ -21,6 +21,7 @@
 - `ZipStreamService`：将多文件流式写入 ZIP，归一化条目名称，不关闭 HTTP 响应流；页面处理下载时使用 `Response.BodyWriter.AsStream` 适配禁用同步 IO。
 - `TemporaryCleanupService`：每小时清理临时目录，删除 24 小时前的文件并移除空目录。
 - `TrashCleanupService`：每小时清理回收站中过期（默认 30 天）条目。
+- `UploadCleanupService`：每小时清理上传临时目录 `.uploading`（默认 6 小时前的残留），避免半成品占用空间；上传写入临时文件成功后原子移动到目标，失败会删除临时文件。
 - 分享直链：支持配置 `Share:ForcePort` 强制输出指定端口（例如 8080），未配置则跟随当前请求的 Host/端口。
 
 ## UI 行为（`Pages/Resources/Index`）

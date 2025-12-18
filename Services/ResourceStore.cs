@@ -30,6 +30,7 @@ public class ResourceStore : IResourceStore
 {
     private const long UploadLimitBytes = 10L * 1024 * 1024 * 1024;
     private const string TrashFolderName = ".trash";
+    private const string UploadTempFolderName = ".uploading";
     private const string MetadataFileName = "metadata.json";
     private readonly ResourcePathHelper _pathHelper;
     private readonly ResourceOptions _options;
@@ -51,6 +52,8 @@ public class ResourceStore : IResourceStore
         Directory.CreateDirectory(temporaryRoot);
         Directory.CreateDirectory(GetTrashRoot(permanentRoot));
         Directory.CreateDirectory(GetTrashRoot(temporaryRoot));
+        Directory.CreateDirectory(GetUploadTempRoot(permanentRoot));
+        Directory.CreateDirectory(GetUploadTempRoot(temporaryRoot));
 
         _logger.LogInformation("Ensured resource roots. Permanent: {PermanentRoot}; Temporary: {TemporaryRoot}", permanentRoot, temporaryRoot);
     }
@@ -70,7 +73,8 @@ public class ResourceStore : IResourceStore
         foreach (var dir in Directory.GetDirectories(safeFullPath))
         {
             var dirName = Path.GetFileName(dir);
-            if (string.Equals(dirName, TrashFolderName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(dirName, TrashFolderName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(dirName, UploadTempFolderName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -185,11 +189,42 @@ public class ResourceStore : IResourceStore
         var targetFileName = GetAvailableFileName(targetDirectory, fileName);
         var targetPath = Path.Combine(targetDirectory, targetFileName);
 
-        _logger.LogInformation("Saving upload to {TargetPath}", targetPath);
+        var tempRoot = GetUploadTempRoot(subRoot);
+        Directory.CreateDirectory(tempRoot);
+        var tempPath = Path.Combine(tempRoot, $"{Guid.NewGuid():N}.upload");
 
-        await using (var stream = new FileStream(targetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+        _logger.LogInformation("Saving upload to temp {TempPath} then moving to {TargetPath}", tempPath, targetPath);
+
+        try
         {
-            await file.CopyToAsync(stream, cancellationToken);
+            await using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await file.CopyToAsync(stream, cancellationToken);
+            }
+
+            var tempInfo = new FileInfo(tempPath);
+            if (tempInfo.Length != file.Length)
+            {
+                throw new IOException("Uploaded file size mismatch, aborting.");
+            }
+
+            File.Move(tempPath, targetPath);
+        }
+        catch
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogWarning(cleanupEx, "Failed to cleanup temp upload file: {TempPath}", tempPath);
+            }
+
+            throw;
         }
 
         var info = new FileInfo(targetPath);
@@ -712,6 +747,8 @@ public class ResourceStore : IResourceStore
     }
 
     private static string GetTrashRoot(string subRoot) => Path.Combine(subRoot, TrashFolderName);
+
+    private static string GetUploadTempRoot(string subRoot) => Path.Combine(subRoot, UploadTempFolderName);
 
     private static bool IsSubPath(string basePath, string targetPath)
     {

@@ -123,11 +123,6 @@
                         <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
                     </div>
                 </form>
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="upload-toggle" disabled>暂停</button>
-                    <button type="button" class="btn btn-outline-danger btn-sm" id="upload-cancel" disabled>停止</button>
-                    <span id="upload-speed" class="text-muted small"></span>
-                </div>
             </div>
             <div class="col-12 col-lg-5">
                 <form id="sort-form" method="get" class="d-flex flex-wrap align-items-center gap-2 justify-content-lg-end">
@@ -186,8 +181,12 @@
             </div>
 
             <div id="upload-status" class="alert d-none" role="alert"></div>
-            <div id="upload-progress-container" class="progress mb-3 d-none">
-                <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100">0%</div>
+            <div id="upload-progress-container" class="d-none mb-3 d-flex align-items-center gap-2">
+                <div class="progress flex-grow-1">
+                    <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100">0%</div>
+                </div>
+                <button type="button" class="btn btn-outline-danger btn-sm d-none" id="upload-cancel" title="停止上传">✕</button>
+                <span id="upload-speed" class="text-muted small"></span>
             </div>
 
             <div class="list-group resource-list">
@@ -404,7 +403,6 @@
             const uploadProgressContainer = container.querySelector('#upload-progress-container');
             const uploadProgressBar = container.querySelector('#upload-progress-bar');
             const dropTarget = container.querySelector('.resource-list');
-            const uploadToggleBtn = container.querySelector('#upload-toggle');
             const uploadCancelBtn = container.querySelector('#upload-cancel');
             const uploadSpeed = container.querySelector('#upload-speed');
             const sortForm = container.querySelector('#sort-form');
@@ -497,8 +495,7 @@
                 }
                 if (uploadSpeed) uploadSpeed.textContent = '';
                 if (uploadBtn) uploadBtn.disabled = false;
-                uploadToggleBtn?.setAttribute('disabled', 'disabled');
-                if (uploadToggleBtn) uploadToggleBtn.textContent = '暂停';
+                uploadCancelBtn?.classList.add('d-none');
                 uploadCancelBtn?.setAttribute('disabled', 'disabled');
             };
 
@@ -614,9 +611,8 @@
                 uploadState.totalBytes = uploadState.queue.reduce((sum, f) => sum + (f.size || 0), 0);
                 uploadState.startAt = Date.now();
                 uploadBtn.disabled = true;
-                uploadToggleBtn?.removeAttribute('disabled');
+                uploadCancelBtn?.classList.remove('d-none');
                 uploadCancelBtn?.removeAttribute('disabled');
-                if (uploadToggleBtn) uploadToggleBtn.textContent = '暂停';
                 showUploadStatus(`开始上传 ${uploadState.totalFiles} 个文件...`, 'success');
                 updateUploadProgress();
                 startNextUpload();
@@ -629,22 +625,10 @@
                 });
             }
 
-            if (uploadToggleBtn) {
-                uploadToggleBtn.addEventListener('click', () => {
-                    uploadState.paused = !uploadState.paused;
-                    if (uploadState.paused) {
-                        uploadToggleBtn.textContent = '继续';
-                    } else {
-                        uploadToggleBtn.textContent = '暂停';
-                        startNextUpload();
-                    }
-                });
-            }
-
             if (uploadCancelBtn) {
                 uploadCancelBtn.addEventListener('click', () => {
                     uploadState.cancelled = true;
-                    uploadToggleBtn?.setAttribute('disabled', 'disabled');
+                    uploadCancelBtn.classList.add('d-none');
                     uploadCancelBtn.setAttribute('disabled', 'disabled');
                     uploadState.queue = [];
                     uploadState.inflight.forEach((xhr) => xhr.abort());
