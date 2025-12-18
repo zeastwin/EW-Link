@@ -161,7 +161,7 @@
                 <button type="button" class="btn btn-outline-primary" id="share-selected-btn" disabled>分享</button>
                 <button type="button" class="btn btn-outline-danger" id="delete-selected-btn" disabled>删除</button>
                 <button type="button" class="btn btn-outline-secondary" id="move-selected-btn" disabled>移动</button>
-                <button type="button" class="btn btn-outline-dark" id="rename-selected-btn" disabled>重命名</button>
+                <button type="button" class="btn btn-outline-secondary" id="rename-selected-btn" disabled>重命名</button>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="select-all" />
                     <label class="form-check-label" for="select-all">全选</label>
@@ -967,6 +967,14 @@
                     .catch(err => console.warn('局部加载失败：', err));
             };
 
+            const navigateWithSort = () => {
+                if (!sortForm) return;
+                const targetUrl = sortForm.action ? new URL(sortForm.action, window.location.origin) : new URL(window.location.href);
+                const formData = new FormData(sortForm);
+                targetUrl.search = new URLSearchParams(formData).toString();
+                loadPage(targetUrl.toString(), true);
+            };
+
             tabLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -996,30 +1004,34 @@
             window.onpopstate = () => loadPage(location.href, false);
 
             sortButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
                     sortButtons.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     if (sortHidden) sortHidden.value = btn.dataset.sort;
-                    if (sortForm) sortForm.submit();
+                    navigateWithSort();
                 });
             });
 
             dirButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
                     dirButtons.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     if (dirHidden) dirHidden.value = btn.dataset.dir;
-                    if (sortForm) sortForm.submit();
+                    navigateWithSort();
                 });
             });
 
             if (sortForm) {
                 sortForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
                     // ensure hidden values are aligned; active classes already set
                     const activeSort = sortButtons.find(b => b.classList.contains('active'));
                     const activeDir = dirButtons.find(b => b.classList.contains('active'));
                     if (activeSort && sortHidden) sortHidden.value = activeSort.dataset.sort;
                     if (activeDir && dirHidden) dirHidden.value = activeDir.dataset.dir;
+                    navigateWithSort();
                 });
             }
             updateState();

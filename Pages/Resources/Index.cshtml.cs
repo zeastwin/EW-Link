@@ -25,7 +25,7 @@ public class IndexModel : PageModel
     private readonly ILogger<IndexModel> _logger;
     private readonly IZipStreamService _zipStreamService;
     private readonly IShareLinkService _shareLinkService;
-    private readonly string? _shareBaseUrl;
+    private readonly int? _sharePortOverride;
     private static readonly HashSet<string> TextPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".txt", ".log", ".json", ".xml", ".cs", ".js", ".css", ".html", ".md", ".ini", ".config"
@@ -37,7 +37,10 @@ public class IndexModel : PageModel
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _zipStreamService = zipStreamService ?? throw new ArgumentNullException(nameof(zipStreamService));
         _shareLinkService = shareLinkService ?? throw new ArgumentNullException(nameof(shareLinkService));
-        _shareBaseUrl = configuration?["Share:PublicBaseUrl"];
+        if (int.TryParse(configuration?["Share:ForcePort"], out var portValue) && portValue > 0)
+        {
+            _sharePortOverride = portValue;
+        }
     }
 
     public ResourceTab SelectedTab { get; private set; }
@@ -787,22 +790,17 @@ public class IndexModel : PageModel
             return string.Empty;
         }
 
-        if (string.IsNullOrWhiteSpace(_shareBaseUrl))
+        if (Request.Host.HasValue)
         {
-            return Url.Page("/Resources/Index", "ShareDownload", new { token }, Request.Scheme) ?? string.Empty;
-        }
-
-        try
-        {
-            var baseUri = new Uri(_shareBaseUrl, UriKind.Absolute);
-            var final = new Uri(baseUri, relative);
+            var builder = new UriBuilder(Request.Scheme, Request.Host.Host)
+            {
+                Port = _sharePortOverride ?? Request.Host.Port ?? -1
+            };
+            var final = new Uri(builder.Uri, relative);
             return final.ToString();
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "拼接分享链接基址失败：{BaseUrl}", _shareBaseUrl);
-            return Url.Page("/Resources/Index", "ShareDownload", new { token }, Request.Scheme) ?? string.Empty;
-        }
+
+        return Url.Page("/Resources/Index", "ShareDownload", new { token }, Request.Scheme) ?? string.Empty;
     }
 
     private string BuildPreviewFileUrl(ResourceTab tab, string path)

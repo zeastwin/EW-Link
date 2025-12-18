@@ -1,6 +1,5 @@
 services:
   app:
-    build: .
     container_name: ew-link-app
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
