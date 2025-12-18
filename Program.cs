@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
-const long uploadLimitBytes = 1024L * 1024 * 1024;
+const long uploadLimitBytes = 10L * 1024 * 1024 * 1024;
 var requestHeadersTimeout = TimeSpan.FromMinutes(2);
 
 builder.Services.Configure<FormOptions>(options =>

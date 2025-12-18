@@ -19,7 +19,7 @@ namespace EW_Link.Pages.Resources;
 
 public class IndexModel : PageModel
 {
-    private const long UploadLimitBytes = 1024L * 1024 * 1024;
+    private const long UploadLimitBytes = 10L * 1024 * 1024 * 1024;
     private const long PreviewLimitBytes = 20L * 1024 * 1024;
     private readonly IResourceStore _resourceStore;
     private readonly ILogger<IndexModel> _logger;
@@ -77,44 +77,60 @@ public class IndexModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostUpload([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, IFormFile? file)
+    public async Task<IActionResult> OnPostUpload([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, IFormFile[]? files)
     {
         if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
 
-        if (file == null || file.Length == 0)
+        if (files == null || files.Length == 0)
         {
             ModelState.AddModelError(string.Empty, "请选择要上传的文件。");
             return Page();
         }
 
-        if (file.Length > UploadLimitBytes)
+        var successCount = 0;
+        foreach (var file in files)
         {
-            ModelState.AddModelError(string.Empty, "文件不能超过 1GB。");
+            if (file == null || file.Length == 0)
+            {
+                continue;
+            }
+
+            if (file.Length > UploadLimitBytes)
+            {
+                _logger.LogWarning("上传失败：文件超出限制。Tab: {Tab}; Path: {Path}; FileName: {FileName}", SelectedTab, CurrentPath, file.FileName);
+                ModelState.AddModelError(string.Empty, $"文件 {file.FileName} 超过 10GB 限制，已跳过。");
+                continue;
+            }
+
+            try
+            {
+                await _resourceStore.SaveUpload(SelectedTab, CurrentPath, file, HttpContext.RequestAborted);
+                successCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "上传失败。Tab: {Tab}; Path: {Path}; FileName: {FileName}", SelectedTab, CurrentPath, file.FileName);
+                ModelState.AddModelError(string.Empty, $"上传失败：{file.FileName} - {ex.Message}");
+            }
+        }
+
+        if (successCount == 0)
+        {
             return Page();
         }
 
-        try
+        TempData["SuccessMessage"] = $"上传成功 {successCount} 个文件。";
+        return RedirectToPage("/Resources/Index", new
         {
-            await _resourceStore.SaveUpload(SelectedTab, CurrentPath, file, HttpContext.RequestAborted);
-            TempData["SuccessMessage"] = $"上传成功：{file.FileName}";
-            return RedirectToPage("/Resources/Index", new
-            {
-                tab = SelectedTabString,
-                path = CurrentPath,
-                q = Filter,
-                sort = SortFieldParam,
-                dir = SortDirectionParam
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "上传失败。Tab: {Tab}; Path: {Path}; FileName: {FileName}", SelectedTab, CurrentPath, file.FileName);
-            ModelState.AddModelError(string.Empty, $"上传失败：{ex.Message}");
-            return Page();
-        }
+            tab = SelectedTabString,
+            path = CurrentPath,
+            q = Filter,
+            sort = SortFieldParam,
+            dir = SortDirectionParam
+        });
     }
 
     public async Task<IActionResult> OnPostDownloadZip([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, [FromForm] string[]? paths)

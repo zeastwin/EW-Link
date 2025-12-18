@@ -28,7 +28,7 @@ public enum SortDirection
 
 public class ResourceStore : IResourceStore
 {
-    private const long UploadLimitBytes = 1024L * 1024 * 1024;
+    private const long UploadLimitBytes = 10L * 1024 * 1024 * 1024;
     private const string TrashFolderName = ".trash";
     private const string MetadataFileName = "metadata.json";
     private readonly ResourcePathHelper _pathHelper;

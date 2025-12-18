@@ -119,10 +119,13 @@
                     <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
                     <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
                     <div class="input-group flex-grow-1">
-                        <input type="file" name="file" id="upload-file" class="form-control" />
+                        <input type="file" name="files" id="upload-file" class="form-control" multiple />
                         <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
                     </div>
                 </form>
+                <div id="drop-zone" class="drop-zone flex-grow-1">
+                    <div class="text-muted small">拖拽文件到此处，或使用“上传”选择（支持多文件并行上传）</div>
+                </div>
             </div>
             <div class="col-12 col-lg-5">
                 <form id="sort-form" method="get" class="d-flex flex-wrap align-items-center gap-2 justify-content-lg-end">
@@ -398,6 +401,7 @@
             const uploadStatus = container.querySelector('#upload-status');
             const uploadProgressContainer = container.querySelector('#upload-progress-container');
             const uploadProgressBar = container.querySelector('#upload-progress-bar');
+            const dropZone = container.querySelector('#drop-zone');
             const sortForm = container.querySelector('#sort-form');
             const sortHidden = container.querySelector('#sort-hidden');
             const dirHidden = container.querySelector('#dir-hidden');
@@ -467,45 +471,97 @@
                 uploadStatus.textContent = message;
             };
 
+            const runUploads = (files) => {
+                if (!uploadForm || !uploadBtn) return;
+                const token = uploadForm.querySelector('input[name=\"__RequestVerificationToken\"]')?.value;
+                const headers = token ? { 'RequestVerificationToken': token } : {};
+                let completed = 0;
+                let successCount = 0;
+                const total = files.length;
+                const maxConcurrent = 3;
+                const queue = [...files];
+                const next = () => {
+                    if (queue.length === 0) return;
+                    const file = queue.shift();
+                    if (!file) return;
+                    const formData = new FormData(uploadForm);
+                    formData.delete('files');
+                    formData.append('files', file, file.name);
+                    fetch(uploadForm.action, { method: 'POST', body: formData, headers })
+                        .then(res => {
+                            if (res.ok) {
+                                successCount++;
+                            }
+                        })
+                        .catch(() => {})
+                        .finally(() => {
+                            completed++;
+                            if (uploadProgressContainer && uploadProgressBar) {
+                                const percent = Math.floor((completed / total) * 100);
+                                uploadProgressBar.style.width = `${percent}%`;
+                                uploadProgressBar.textContent = `${percent}%`;
+                            }
+                            if (completed < total) {
+                                next();
+                            } else {
+                                uploadBtn.disabled = false;
+                                if (successCount > 0) {
+                                    showUploadStatus(`上传完成：成功 ${successCount}/${total}，正在刷新列表...`, 'success');
+                                    window.location.reload();
+                                } else {
+                                    showUploadStatus('上传失败，请重试。', 'danger');
+                                }
+                            }
+                        });
+                };
+
+                for (let i = 0; i < Math.min(maxConcurrent, total); i++) {
+                    next();
+                }
+            };
+
+            const handleUploadSubmit = (files) => {
+                if (!files || files.length === 0) {
+                    showUploadStatus('请选择要上传的文件。', 'danger');
+                    return;
+                }
+                uploadBtn.disabled = true;
+                if (uploadProgressContainer && uploadProgressBar) {
+                    uploadProgressContainer.classList.remove('d-none');
+                    uploadProgressBar.style.width = '0%';
+                    uploadProgressBar.textContent = '0%';
+                }
+                showUploadStatus(`开始上传 ${files.length} 个文件...`, 'success');
+                runUploads(Array.from(files));
+            };
+
             if (uploadForm && uploadFile && uploadBtn) {
                 uploadForm.addEventListener('submit', (e) => {
                     e.preventDefault();
-                    if (!uploadFile.files || uploadFile.files.length === 0) {
-                        showUploadStatus('请选择要上传的文件。', 'danger');
-                        return;
-                    }
-                    const formData = new FormData(uploadForm);
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('POST', uploadForm.action);
-                    const token = uploadForm.querySelector('input[name="__RequestVerificationToken"]')?.value;
-                    if (token) xhr.setRequestHeader('RequestVerificationToken', token);
-                    uploadBtn.disabled = true;
-                    if (uploadProgressContainer && uploadProgressBar) {
-                        uploadProgressContainer.classList.remove('d-none');
-                        uploadProgressBar.style.width = '0%';
-                        uploadProgressBar.textContent = '0%';
-                    }
-                    xhr.upload.onprogress = (event) => {
-                        if (event.lengthComputable && uploadProgressBar) {
-                            const percent = Math.floor((event.loaded / event.total) * 100);
-                            uploadProgressBar.style.width = `${percent}%`;
-                            uploadProgressBar.textContent = `${percent}%`;
-                        }
-                    };
-                    xhr.onerror = () => {
-                        showUploadStatus('上传失败，请重试。', 'danger');
-                        uploadBtn.disabled = false;
-                    };
-                    xhr.onload = () => {
-                        if (xhr.status >= 200 && xhr.status < 300) {
-                            showUploadStatus('上传成功，正在刷新列表...', 'success');
-                            window.location.reload();
-                        } else {
-                            showUploadStatus('上传失败，请检查文件或重试。', 'danger');
-                            uploadBtn.disabled = false;
-                        }
-                    };
-                    xhr.send(formData);
+                    handleUploadSubmit(uploadFile.files);
+                });
+            }
+
+            if (dropZone && uploadFile) {
+                const highlight = () => dropZone.classList.add('drop-zone-hover');
+                const unhighlight = () => dropZone.classList.remove('drop-zone-hover');
+                ['dragenter', 'dragover'].forEach(evt => {
+                    dropZone.addEventListener(evt, (e) => {
+                        e.preventDefault();
+                        highlight();
+                    });
+                });
+                ['dragleave', 'drop'].forEach(evt => {
+                    dropZone.addEventListener(evt, (e) => {
+                        e.preventDefault();
+                        unhighlight();
+                    });
+                });
+                dropZone.addEventListener('drop', (e) => {
+                    const dt = e.dataTransfer;
+                    if (!dt || !dt.files || dt.files.length === 0) return;
+                    uploadFile.files = dt.files;
+                    showUploadStatus(`已选择 ${dt.files.length} 个文件，点击上传开始。`, 'success');
                 });
             }
 
