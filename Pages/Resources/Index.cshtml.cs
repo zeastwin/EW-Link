@@ -36,12 +36,14 @@ public class IndexModel : PageModel
     }
 
     public ResourceTab SelectedTab { get; private set; }
+    public bool IsTrashView { get; private set; }
     public string? CurrentPath { get; private set; }
     public string? Filter { get; private set; }
     public ResourceSortField SortField { get; private set; }
     public SortDirection SortDirection { get; private set; }
 
     public IReadOnlyList<ResourceEntry> Entries { get; private set; } = Array.Empty<ResourceEntry>();
+    public IReadOnlyList<TrashEntry> TrashEntries { get; private set; } = Array.Empty<TrashEntry>();
     public List<BreadcrumbItem> Breadcrumbs { get; private set; } = new();
     public int DirectoryCount { get; private set; }
     public int FileCount { get; private set; }
@@ -57,9 +59,9 @@ public class IndexModel : PageModel
     public string SortDirectionParam => SortDirection == SortDirection.Asc ? "asc" : "desc";
     public string? ParentPath => CalculateParentPath(CurrentPath);
 
-    public IActionResult OnGet([FromQuery] string? tab, [FromQuery] string? path, [FromQuery(Name = "q")] string? filter, [FromQuery] string? sort, [FromQuery] string? dir)
+    public IActionResult OnGet([FromQuery] string? tab, [FromQuery] string? path, [FromQuery(Name = "q")] string? filter, [FromQuery] string? sort, [FromQuery] string? dir, [FromQuery] string? view)
     {
-        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
@@ -67,9 +69,9 @@ public class IndexModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostUpload([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, IFormFile? file)
+    public async Task<IActionResult> OnPostUpload([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, IFormFile? file)
     {
-        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
@@ -107,9 +109,9 @@ public class IndexModel : PageModel
         }
     }
 
-    public async Task<IActionResult> OnPostDownloadZip([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string[]? paths)
+    public async Task<IActionResult> OnPostDownloadZip([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, [FromForm] string[]? paths)
     {
-        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
@@ -153,9 +155,9 @@ public class IndexModel : PageModel
         return new EmptyResult();
     }
 
-    public IActionResult OnPostCreateDirectory([FromForm] string? tab, [FromForm] string? path, [FromForm] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? folderName)
+    public IActionResult OnPostCreateDirectory([FromForm] string? tab, [FromForm] string? path, [FromForm] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, [FromForm] string? folderName)
     {
-        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
@@ -180,9 +182,9 @@ public class IndexModel : PageModel
         return RedirectToPage("/Resources/Index", new { tab = SelectedTabString, path = CurrentPath, q = Filter, sort = SortFieldParam, dir = SortDirectionParam });
     }
 
-    public IActionResult OnPostDelete([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string[]? paths, [FromForm] string? target)
+    public IActionResult OnPostDelete([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, [FromForm] string[]? paths, [FromForm] string? target)
     {
-        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
@@ -206,7 +208,7 @@ public class IndexModel : PageModel
         try
         {
             _resourceStore.DeleteMany(SelectedTab, targets);
-            TempData["SuccessMessage"] = $"已删除 {targets.Count} 项。";
+            TempData["SuccessMessage"] = $"已移入回收站：{targets.Count} 项。";
         }
         catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
         {
@@ -220,13 +222,14 @@ public class IndexModel : PageModel
             path = CurrentPath,
             q = Filter,
             sort = SortFieldParam,
-            dir = SortDirectionParam
+            dir = SortDirectionParam,
+            view = IsTrashView ? "trash" : null
         });
     }
 
-    public IActionResult OnPostMove([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string[]? paths, [FromForm] string? targetDir)
+    public IActionResult OnPostMove([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, [FromForm] string[]? paths, [FromForm] string? targetDir)
     {
-        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
@@ -255,13 +258,14 @@ public class IndexModel : PageModel
             path = CurrentPath,
             q = Filter,
             sort = SortFieldParam,
-            dir = SortDirectionParam
+            dir = SortDirectionParam,
+            view = IsTrashView ? "trash" : null
         });
     }
 
-    public IActionResult OnPostRename([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? renamePath, [FromForm] string? newName)
+    public IActionResult OnPostRename([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? view, [FromForm] string? renamePath, [FromForm] string? newName)
     {
-        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        if (!TryLoadPageData(tab, path, filter, sort, dir, view, out var errorResult))
         {
             return errorResult!;
         }
@@ -289,7 +293,8 @@ public class IndexModel : PageModel
             path = CurrentPath,
             q = Filter,
             sort = SortFieldParam,
-            dir = SortDirectionParam
+            dir = SortDirectionParam,
+            view = IsTrashView ? "trash" : null
         });
     }
 
@@ -479,6 +484,54 @@ public class IndexModel : PageModel
         }
     }
 
+    public IActionResult OnPostRestoreTrash([FromForm] string? tab, [FromForm] string[]? ids)
+    {
+        var selectedTab = ParseTab(tab);
+        var restoreIds = ids?.Where(i => !string.IsNullOrWhiteSpace(i)).ToList() ?? new List<string>();
+        if (restoreIds.Count == 0)
+        {
+            TempData["ErrorMessage"] = "请选择要还原的项目。";
+            return RedirectToPage("/Resources/Index", new { tab = tab, view = "trash" });
+        }
+
+        try
+        {
+            _resourceStore.RestoreFromTrash(selectedTab, restoreIds);
+            TempData["SuccessMessage"] = $"已还原 {restoreIds.Count} 项。";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "还原失败。Tab: {Tab}; Ids: {Ids}", selectedTab, string.Join(',', restoreIds));
+            TempData["ErrorMessage"] = $"还原失败：{ex.Message}";
+        }
+
+        return RedirectToPage("/Resources/Index", new { tab = tab, view = "trash" });
+    }
+
+    public IActionResult OnPostPurgeTrash([FromForm] string? tab, [FromForm] string[]? ids)
+    {
+        var selectedTab = ParseTab(tab);
+        var purgeIds = ids?.Where(i => !string.IsNullOrWhiteSpace(i)).ToList() ?? new List<string>();
+        if (purgeIds.Count == 0)
+        {
+            TempData["ErrorMessage"] = "请选择要彻底删除的项目。";
+            return RedirectToPage("/Resources/Index", new { tab = tab, view = "trash" });
+        }
+
+        try
+        {
+            _resourceStore.PurgeTrash(selectedTab, purgeIds);
+            TempData["SuccessMessage"] = $"已彻底删除 {purgeIds.Count} 项。";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "彻底删除失败。Tab: {Tab}; Ids: {Ids}", selectedTab, string.Join(',', purgeIds));
+            TempData["ErrorMessage"] = $"彻底删除失败：{ex.Message}";
+        }
+
+        return RedirectToPage("/Resources/Index", new { tab = tab, view = "trash" });
+    }
+
     private ResourceTab ParseTab(string? tab)
     {
         return string.Equals(tab, "temporary", StringComparison.OrdinalIgnoreCase)
@@ -486,11 +539,12 @@ public class IndexModel : PageModel
             : ResourceTab.Permanent;
     }
 
-    private bool TryLoadPageData(string? tab, string? path, string? filter, string? sort, string? dir, out IActionResult? errorResult)
+    private bool TryLoadPageData(string? tab, string? path, string? filter, string? sort, string? dir, string? view, out IActionResult? errorResult)
     {
         errorResult = null;
 
         SelectedTab = ParseTab(tab);
+        IsTrashView = string.Equals(view, "trash", StringComparison.OrdinalIgnoreCase);
         CurrentPath = path ?? string.Empty;
         Filter = string.IsNullOrWhiteSpace(filter) ? null : filter;
         SortField = ParseSortField(sort);
@@ -498,22 +552,35 @@ public class IndexModel : PageModel
 
         try
         {
-            Entries = _resourceStore.List(SelectedTab, CurrentPath, Filter, SortField, SortDirection);
-            ComputeStats();
-            Breadcrumbs = BuildBreadcrumbs(CurrentPath);
+            if (IsTrashView)
+            {
+                TrashEntries = _resourceStore.ListTrash(SelectedTab);
+                Entries = Array.Empty<ResourceEntry>();
+                DirectoryCount = 0;
+                FileCount = 0;
+                TotalSize = 0;
+                Breadcrumbs = new List<BreadcrumbItem> { new("回收站", string.Empty) };
+            }
+            else
+            {
+                Entries = _resourceStore.List(SelectedTab, CurrentPath, Filter, SortField, SortDirection);
+                ComputeStats();
+                Breadcrumbs = BuildBreadcrumbs(CurrentPath);
+            }
             return true;
         }
         catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
         {
             _logger.LogWarning(ex, "Load page data failed. Tab: {Tab}; Path: {Path}", SelectedTab, CurrentPath);
-            TempData["ErrorMessage"] = "路径无效或目录不存在，已回到根目录。";
+            TempData["ErrorMessage"] = IsTrashView ? "回收站加载失败。" : "路径无效或目录不存在，已回到根目录。";
             errorResult = RedirectToPage("/Resources/Index", new
             {
                 tab = SelectedTabString,
                 path = string.Empty,
                 q = (string?)null,
                 sort = SortFieldParam,
-                dir = SortDirectionParam
+                dir = SortDirectionParam,
+                view = IsTrashView ? "trash" : null
             });
             return false;
         }

@@ -17,14 +17,16 @@
                    asp-route-path="@Model.CurrentPath"
                    asp-route-q="@Model.Filter"
                    asp-route-sort="@Model.SortFieldParam"
-                   asp-route-dir="@Model.SortDirectionParam">永久文件夹</a>
+                   asp-route-dir="@Model.SortDirectionParam"
+                   asp-route-view="@(Model.IsTrashView ? "trash" : null)">永久文件夹</a>
                 <a class="badge rounded-pill resource-tab-link tab-chip tab-chip-strong @ActiveTab(ResourceTab.Temporary)"
                    asp-page="/Resources/Index"
                    asp-route-tab="temporary"
                    asp-route-path="@Model.CurrentPath"
                    asp-route-q="@Model.Filter"
                    asp-route-sort="@Model.SortFieldParam"
-                   asp-route-dir="@Model.SortDirectionParam">临时文件夹</a>
+                   asp-route-dir="@Model.SortDirectionParam"
+                   asp-route-view="@(Model.IsTrashView ? "trash" : null)">临时文件夹</a>
             </div>
             <div class="text-end small text-muted">
                 <span class="me-3">目录数：@Model.DirectoryCount</span>
@@ -50,10 +52,63 @@
             <div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>
         }
 
-        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 breadcrumb-bar">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 breadcrumb-bar">
             <div class="text-muted small">路径：@currentPathDisplay</div>
+            @if (!Model.IsTrashView)
+            {
+                <a class="btn btn-outline-light border btn-sm ms-auto text-muted"
+                   asp-page="/Resources/Index"
+                   asp-route-tab="@Model.SelectedTabString"
+                   asp-route-view="trash">回收站</a>
+            }
         </div>
 
+        @if (Model.IsTrashView)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+                <a class="btn btn-return btn-sm"
+                   asp-page="/Resources/Index"
+                   asp-route-tab="@Model.SelectedTabString"
+                   asp-route-view="">⬅ 返回列表</a>
+                <button type="button" class="btn btn-primary" id="restore-selected-btn" disabled>还原</button>
+                <button type="button" class="btn btn-outline-danger" id="purge-selected-btn" disabled>彻底删除</button>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="select-all" />
+                    <label class="form-check-label" for="select-all">全选</label>
+                </div>
+            </div>
+
+            <div class="list-group resource-list">
+                @if (Model.TrashEntries.Count == 0)
+                {
+                    <div class="list-group-item text-center text-muted py-4">回收站为空</div>
+                }
+                else
+                {
+                    @foreach (var entry in Model.TrashEntries)
+                    {
+                        <div class="list-group-item d-flex align-items-center gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input entry-checkbox" type="checkbox" name="ids" value="@entry.Id" />
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="resource-icon">@((entry.IsDirectory ? "📁" : "📄"))</span>
+                                    <span class="fw-semibold text-primary">@entry.Name</span>
+                                </div>
+                                <div class="text-muted small">
+                                    <span>原路径：@entry.OriginalPath</span>
+                                    <span class="ms-3">删除时间：@entry.DeletedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</span>
+                                    <span class="ms-3">大小：@Model.FormatSize(entry.SizeBytes)</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+        else
+        {
         <div class="action-panel row g-3 mb-3 align-items-center">
             <div class="col-12 col-lg-7 d-flex flex-wrap align-items-center gap-2">
                 <form id="upload-form" method="post" enctype="multipart/form-data" asp-page-handler="Upload" class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
@@ -62,6 +117,7 @@
                     <input type="hidden" name="q" value="@Model.Filter" />
                     <input type="hidden" name="sort" value="@Model.SortFieldParam" />
                     <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+                    <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
                     <div class="input-group flex-grow-1">
                         <input type="file" name="file" id="upload-file" class="form-control" />
                         <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
@@ -85,6 +141,7 @@
             <input type="hidden" name="q" value="@Model.Filter" />
             <input type="hidden" name="sort" value="@Model.SortFieldParam" />
             <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
             <input type="hidden" id="create-folder-name" name="folderName" />
         </form>
 
@@ -95,6 +152,7 @@
             <input type="hidden" name="sort" value="@Model.SortFieldParam" />
             <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
             <input type="hidden" id="dirs-endpoint" value="@Url.Page("/Resources/Index", "Dirs", new { tab = Model.SelectedTabString })" />
+            <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
 
             <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
                 <a class="btn btn-return btn-sm back-link"
@@ -190,12 +248,14 @@
                 }
             </div>
         </form>
+        }
         <form method="post" asp-page-handler="Delete" id="delete-form" class="d-none">
             <input type="hidden" name="tab" value="@Model.SelectedTabString" />
             <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
             <input type="hidden" name="q" value="@Model.Filter" />
             <input type="hidden" name="sort" value="@Model.SortFieldParam" />
             <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
             <div id="delete-paths-container"></div>
         </form>
         <form method="post" asp-page-handler="Move" id="move-form" class="d-none">
@@ -204,6 +264,7 @@
             <input type="hidden" name="q" value="@Model.Filter" />
             <input type="hidden" name="sort" value="@Model.SortFieldParam" />
             <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
             <input type="hidden" name="targetDir" id="move-target-dir" />
             <div id="move-paths-container"></div>
         </form>
@@ -213,8 +274,19 @@
             <input type="hidden" name="q" value="@Model.Filter" />
             <input type="hidden" name="sort" value="@Model.SortFieldParam" />
             <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
             <input type="hidden" name="renamePath" id="rename-path" />
             <input type="hidden" name="newName" id="rename-new-name" />
+        </form>
+        <form method="post" asp-page-handler="RestoreTrash" id="restore-form" class="d-none">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="view" value="trash" />
+            <div id="restore-paths-container"></div>
+        </form>
+        <form method="post" asp-page-handler="PurgeTrash" id="purge-form" class="d-none">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="view" value="trash" />
+            <div id="purge-paths-container"></div>
         </form>
     </section>
 </div>
@@ -268,6 +340,8 @@
             const deleteBtn = container.querySelector('#delete-selected-btn');
             const moveBtn = container.querySelector('#move-selected-btn');
             const renameSelectedBtn = container.querySelector('#rename-selected-btn');
+            const restoreBtn = container.querySelector('#restore-selected-btn');
+            const purgeBtn = container.querySelector('#purge-selected-btn');
             const deleteForm = container.querySelector('#delete-form');
             const deletePathsContainer = container.querySelector('#delete-paths-container');
             const moveForm = container.querySelector('#move-form');
@@ -286,6 +360,10 @@
             const renameForm = container.querySelector('#rename-form');
             const renamePath = container.querySelector('#rename-path');
             const renameNewName = container.querySelector('#rename-new-name');
+            const restoreForm = container.querySelector('#restore-form');
+            const restorePathsContainer = container.querySelector('#restore-paths-container');
+            const purgeForm = container.querySelector('#purge-form');
+            const purgePathsContainer = container.querySelector('#purge-paths-container');
             const uploadForm = container.querySelector('#upload-form');
             const uploadFile = container.querySelector('#upload-file');
             const uploadBtn = container.querySelector('#upload-submit');
@@ -323,6 +401,12 @@
                 }
                 if (renameSelectedBtn) {
                     renameSelectedBtn.disabled = selected !== 1;
+                }
+                if (restoreBtn) {
+                    restoreBtn.disabled = selected === 0;
+                }
+                if (purgeBtn) {
+                    purgeBtn.disabled = selected === 0;
                 }
                 if (selectAll) {
                 selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
@@ -674,6 +758,39 @@
                         });
                         deleteForm.submit();
                     }
+                });
+            }
+
+            if (restoreBtn) {
+                restoreBtn.addEventListener('click', () => {
+                    const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+                    if (selected.length === 0 || !restoreForm || !restorePathsContainer) return;
+                    restorePathsContainer.innerHTML = '';
+                    selected.forEach(val => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'ids';
+                        input.value = val;
+                        restorePathsContainer.appendChild(input);
+                    });
+                    restoreForm.submit();
+                });
+            }
+
+            if (purgeBtn) {
+                purgeBtn.addEventListener('click', () => {
+                    const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+                    if (selected.length === 0 || !purgeForm || !purgePathsContainer) return;
+                    if (!confirm(`确定彻底删除选中的 ${selected.length} 项？此操作不可恢复。`)) return;
+                    purgePathsContainer.innerHTML = '';
+                    selected.forEach(val => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'ids';
+                        input.value = val;
+                        purgePathsContainer.appendChild(input);
+                    });
+                    purgeForm.submit();
                 });
             }
 

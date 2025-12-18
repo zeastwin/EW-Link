@@ -37,6 +37,7 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<IResourceStore, ResourceStore>();
 builder.Services.AddSingleton<IZipStreamService, ZipStreamService>();
 builder.Services.AddHostedService<TemporaryCleanupService>();
+builder.Services.AddHostedService<TrashCleanupService>();
 
 builder.Services.AddRazorPages();
 

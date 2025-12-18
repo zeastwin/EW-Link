@@ -39,4 +39,24 @@ public interface IResourceStore
     /// 批量移动文件或文件夹到目标目录。
     /// </summary>
     void MoveMany(ResourceTab tab, IEnumerable<string> relativePaths, string? targetDirectoryRelativePath);
+
+    /// <summary>
+    /// 列出回收站条目。
+    /// </summary>
+    IReadOnlyList<TrashEntry> ListTrash(ResourceTab tab);
+
+    /// <summary>
+    /// 从回收站还原条目。
+    /// </summary>
+    void RestoreFromTrash(ResourceTab tab, IEnumerable<string> ids);
+
+    /// <summary>
+    /// 彻底删除回收站条目。
+    /// </summary>
+    void PurgeTrash(ResourceTab tab, IEnumerable<string> ids);
+
+    /// <summary>
+    /// 清理过期回收站条目。
+    /// </summary>
+    void CleanupTrash(ResourceTab tab, DateTimeOffset cutoff);
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EW_Link.Models;
@@ -28,6 +29,8 @@ public enum SortDirection
 public class ResourceStore : IResourceStore
 {
     private const long UploadLimitBytes = 1024L * 1024 * 1024;
+    private const string TrashFolderName = ".trash";
+    private const string MetadataFileName = "metadata.json";
     private readonly ResourcePathHelper _pathHelper;
     private readonly ResourceOptions _options;
     private readonly ILogger<ResourceStore> _logger;
@@ -46,6 +49,8 @@ public class ResourceStore : IResourceStore
 
         Directory.CreateDirectory(permanentRoot);
         Directory.CreateDirectory(temporaryRoot);
+        Directory.CreateDirectory(GetTrashRoot(permanentRoot));
+        Directory.CreateDirectory(GetTrashRoot(temporaryRoot));
 
         _logger.LogInformation("Ensured resource roots. Permanent: {PermanentRoot}; Temporary: {TemporaryRoot}", permanentRoot, temporaryRoot);
     }
@@ -65,6 +70,10 @@ public class ResourceStore : IResourceStore
         foreach (var dir in Directory.GetDirectories(safeFullPath))
         {
             var dirName = Path.GetFileName(dir);
+            if (string.Equals(dirName, TrashFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
             entries.Add(new ResourceEntry
             {
                 Name = dirName,
@@ -221,37 +230,12 @@ public class ResourceStore : IResourceStore
 
     public void Delete(ResourceTab tab, string relativePath)
     {
-        if (string.IsNullOrWhiteSpace(relativePath))
-        {
-            throw new ArgumentException("Relative path is required.", nameof(relativePath));
-        }
-
-        var subRoot = _pathHelper.ResolveSubRoot(tab);
-        var fullPath = _pathHelper.ResolveSafeFullPath(subRoot, relativePath);
-
-        if (Directory.Exists(fullPath))
-        {
-            Directory.Delete(fullPath, recursive: true);
-            _logger.LogInformation("Deleted directory: {Path}", fullPath);
-            return;
-        }
-
-        if (File.Exists(fullPath))
-        {
-            File.Delete(fullPath);
-            _logger.LogInformation("Deleted file: {Path}", fullPath);
-            return;
-        }
-
-        throw new FileNotFoundException("Path not found.", fullPath);
+        MoveToTrash(tab, new[] { relativePath });
     }
 
     public void DeleteMany(ResourceTab tab, IEnumerable<string> relativePaths)
     {
-        foreach (var path in relativePaths)
-        {
-            Delete(tab, path);
-        }
+        MoveToTrash(tab, relativePaths);
     }
 
     public void Rename(ResourceTab tab, string relativePath, string newName)
@@ -383,6 +367,76 @@ public class ResourceStore : IResourceStore
         }
     }
 
+    private void MoveToTrash(ResourceTab tab, IEnumerable<string> relativePaths)
+    {
+        if (relativePaths == null)
+        {
+            throw new ArgumentNullException(nameof(relativePaths));
+        }
+
+        var paths = relativePaths.Where(p => p != null).ToList();
+        if (paths.Count == 0)
+        {
+            throw new InvalidOperationException("未提供有效的路径。");
+        }
+
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var trashRoot = GetTrashRoot(subRoot);
+        Directory.CreateDirectory(trashRoot);
+
+        foreach (var raw in paths)
+        {
+            var trimmed = raw?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                throw new InvalidOperationException("包含空的路径参数。");
+            }
+
+            if (trimmed.StartsWith(TrashFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("回收站目录不允许直接操作。");
+            }
+
+            var sourceFull = _pathHelper.ResolveSafeFullPath(subRoot, trimmed);
+            var isDirectory = Directory.Exists(sourceFull);
+            var isFile = File.Exists(sourceFull);
+
+            if (!isDirectory && !isFile)
+            {
+                throw new FileNotFoundException("路径无效或不存在。", sourceFull);
+            }
+
+            var entryId = Guid.NewGuid().ToString("N");
+            var container = Path.Combine(trashRoot, entryId);
+            Directory.CreateDirectory(container);
+
+            var name = Path.GetFileName(sourceFull);
+            var targetPath = Path.Combine(container, name);
+
+            var metadata = new TrashMetadata
+            {
+                Id = entryId,
+                OriginalPath = trimmed,
+                OriginalName = name,
+                IsDirectory = isDirectory,
+                DeletedAt = DateTimeOffset.UtcNow,
+                SizeBytes = isFile ? new FileInfo(sourceFull).Length : GetDirectorySize(sourceFull)
+            };
+
+            if (isDirectory)
+            {
+                Directory.Move(sourceFull, targetPath);
+            }
+            else
+            {
+                File.Move(sourceFull, targetPath);
+            }
+
+            WriteMetadata(container, metadata);
+            _logger.LogInformation("Moved to trash: {Source} -> {Target}", sourceFull, container);
+        }
+    }
+
     public List<(string entryName, Stream fileStream)> OpenStreamsForZip(ResourceTab tab, IEnumerable<string> relativePaths)
     {
         if (relativePaths == null)
@@ -456,6 +510,155 @@ public class ResourceStore : IResourceStore
         }
     }
 
+    public IReadOnlyList<TrashEntry> ListTrash(ResourceTab tab)
+    {
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var trashRoot = GetTrashRoot(subRoot);
+        Directory.CreateDirectory(trashRoot);
+
+        var results = new List<TrashEntry>();
+        foreach (var dir in Directory.EnumerateDirectories(trashRoot))
+        {
+            try
+            {
+                var metadata = ReadMetadata(dir);
+                if (metadata == null)
+                {
+                    continue;
+                }
+
+                results.Add(new TrashEntry
+                {
+                    Id = metadata.Id,
+                    Name = metadata.OriginalName,
+                    OriginalPath = metadata.OriginalPath,
+                    IsDirectory = metadata.IsDirectory,
+                    DeletedAt = metadata.DeletedAt,
+                    SizeBytes = metadata.SizeBytes
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "读取回收站条目失败：{Dir}", dir);
+            }
+        }
+
+        return results
+            .OrderByDescending(e => e.DeletedAt)
+            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public void RestoreFromTrash(ResourceTab tab, IEnumerable<string> ids)
+    {
+        if (ids == null)
+        {
+            throw new ArgumentNullException(nameof(ids));
+        }
+
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var trashRoot = GetTrashRoot(subRoot);
+
+        foreach (var id in ids)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                throw new InvalidOperationException("包含无效的回收站 ID。");
+            }
+
+            var entryDir = Path.Combine(trashRoot, id);
+            if (!Directory.Exists(entryDir))
+            {
+                throw new DirectoryNotFoundException($"回收站条目不存在：{id}");
+            }
+
+            var metadata = ReadMetadata(entryDir) ?? throw new InvalidOperationException("回收站元数据缺失或无效。");
+            var targetFull = _pathHelper.ResolveSafeFullPath(subRoot, metadata.OriginalPath);
+
+            if (File.Exists(targetFull) || Directory.Exists(targetFull))
+            {
+                throw new InvalidOperationException($"目标位置已存在同名项：{metadata.OriginalPath}");
+            }
+
+            var parent = Path.GetDirectoryName(targetFull);
+            if (!string.IsNullOrEmpty(parent))
+            {
+                Directory.CreateDirectory(parent);
+            }
+
+            var storedPath = Path.Combine(entryDir, metadata.OriginalName);
+            if (metadata.IsDirectory)
+            {
+                Directory.Move(storedPath, targetFull);
+            }
+            else
+            {
+                File.Move(storedPath, targetFull);
+            }
+
+            Directory.Delete(entryDir, recursive: true);
+            _logger.LogInformation("Restored from trash: {Original} (Id: {Id})", targetFull, id);
+        }
+    }
+
+    public void PurgeTrash(ResourceTab tab, IEnumerable<string> ids)
+    {
+        if (ids == null)
+        {
+            throw new ArgumentNullException(nameof(ids));
+        }
+
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var trashRoot = GetTrashRoot(subRoot);
+
+        foreach (var id in ids)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                continue;
+            }
+
+            var entryDir = Path.Combine(trashRoot, id);
+            if (Directory.Exists(entryDir))
+            {
+                Directory.Delete(entryDir, recursive: true);
+                _logger.LogInformation("Purged trash entry: {Id}", id);
+            }
+        }
+    }
+
+    public void CleanupTrash(ResourceTab tab, DateTimeOffset cutoff)
+    {
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var trashRoot = GetTrashRoot(subRoot);
+        if (!Directory.Exists(trashRoot))
+        {
+            return;
+        }
+
+        foreach (var dir in Directory.EnumerateDirectories(trashRoot))
+        {
+            try
+            {
+                var metadata = ReadMetadata(dir);
+                if (metadata == null)
+                {
+                    continue;
+                }
+
+                if (metadata.DeletedAt < cutoff)
+                {
+                    Directory.Delete(dir, recursive: true);
+                    _logger.LogInformation("Cleaned expired trash entry: {Dir}", dir);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clean trash entry: {Dir}", dir);
+            }
+        }
+    }
+
     private static string CombineRelativePath(string? basePath, string name)
     {
         if (string.IsNullOrEmpty(basePath))
@@ -508,10 +711,65 @@ public class ResourceStore : IResourceStore
         return new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
     }
 
+    private static string GetTrashRoot(string subRoot) => Path.Combine(subRoot, TrashFolderName);
+
     private static bool IsSubPath(string basePath, string targetPath)
     {
         var normalizedBase = Path.GetFullPath(basePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         var normalizedTarget = Path.GetFullPath(targetPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         return normalizedTarget.StartsWith(normalizedBase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static long GetDirectorySize(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return 0;
+        }
+
+        long size = 0;
+        var files = Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories);
+        foreach (var file in files)
+        {
+            try
+            {
+                var info = new FileInfo(file);
+                size += info.Length;
+            }
+            catch
+            {
+                // ignore single file errors
+            }
+        }
+
+        return size;
+    }
+
+    private static void WriteMetadata(string directory, TrashMetadata metadata)
+    {
+        var json = JsonSerializer.Serialize(metadata);
+        File.WriteAllText(Path.Combine(directory, MetadataFileName), json);
+    }
+
+    private static TrashMetadata? ReadMetadata(string directory)
+    {
+        var metadataPath = Path.Combine(directory, MetadataFileName);
+        if (!File.Exists(metadataPath))
+        {
+            return null;
+        }
+
+        var json = File.ReadAllText(metadataPath);
+        return JsonSerializer.Deserialize<TrashMetadata>(json);
+    }
+
+    private class TrashMetadata
+    {
+        public required string Id { get; set; }
+        public required string OriginalPath { get; set; }
+        public required string OriginalName { get; set; }
+        public required bool IsDirectory { get; set; }
+        public DateTimeOffset DeletedAt { get; set; }
+        public long SizeBytes { get; set; }
     }
 }
