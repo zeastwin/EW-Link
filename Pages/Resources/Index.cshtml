@@ -123,8 +123,10 @@
                         <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
                     </div>
                 </form>
-                <div id="drop-zone" class="drop-zone flex-grow-1">
-                    <div class="text-muted small">拖拽文件到此处，或使用“上传”选择（支持多文件并行上传）</div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="upload-toggle" disabled>暂停</button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" id="upload-cancel" disabled>停止</button>
+                    <span id="upload-speed" class="text-muted small"></span>
                 </div>
             </div>
             <div class="col-12 col-lg-5">
@@ -401,7 +403,10 @@
             const uploadStatus = container.querySelector('#upload-status');
             const uploadProgressContainer = container.querySelector('#upload-progress-container');
             const uploadProgressBar = container.querySelector('#upload-progress-bar');
-            const dropZone = container.querySelector('#drop-zone');
+            const dropTarget = container.querySelector('.resource-list');
+            const uploadToggleBtn = container.querySelector('#upload-toggle');
+            const uploadCancelBtn = container.querySelector('#upload-cancel');
+            const uploadSpeed = container.querySelector('#upload-speed');
             const sortForm = container.querySelector('#sort-form');
             const sortHidden = container.querySelector('#sort-hidden');
             const dirHidden = container.querySelector('#dir-hidden');
@@ -471,53 +476,131 @@
                 uploadStatus.textContent = message;
             };
 
-            const runUploads = (files) => {
-                if (!uploadForm || !uploadBtn) return;
-                const token = uploadForm.querySelector('input[name=\"__RequestVerificationToken\"]')?.value;
-                const headers = token ? { 'RequestVerificationToken': token } : {};
-                let completed = 0;
-                let successCount = 0;
-                const total = files.length;
-                const maxConcurrent = 3;
-                const queue = [...files];
-                const next = () => {
-                    if (queue.length === 0) return;
-                    const file = queue.shift();
-                    if (!file) return;
-                    const formData = new FormData(uploadForm);
-                    formData.delete('files');
-                    formData.append('files', file, file.name);
-                    fetch(uploadForm.action, { method: 'POST', body: formData, headers })
-                        .then(res => {
-                            if (res.ok) {
-                                successCount++;
-                            }
-                        })
-                        .catch(() => {})
-                        .finally(() => {
-                            completed++;
-                            if (uploadProgressContainer && uploadProgressBar) {
-                                const percent = Math.floor((completed / total) * 100);
-                                uploadProgressBar.style.width = `${percent}%`;
-                                uploadProgressBar.textContent = `${percent}%`;
-                            }
-                            if (completed < total) {
-                                next();
-                            } else {
-                                uploadBtn.disabled = false;
-                                if (successCount > 0) {
-                                    showUploadStatus(`上传完成：成功 ${successCount}/${total}，正在刷新列表...`, 'success');
-                                    window.location.reload();
-                                } else {
-                                    showUploadStatus('上传失败，请重试。', 'danger');
-                                }
-                            }
-                        });
-                };
+            const uploadState = {
+                queue: [],
+                inflight: new Set(),
+                paused: false,
+                cancelled: false,
+                totalFiles: 0,
+                completed: 0,
+                success: 0,
+                totalBytes: 0,
+                uploadedBytes: 0,
+                startAt: 0
+            };
 
-                for (let i = 0; i < Math.min(maxConcurrent, total); i++) {
-                    next();
+            const resetUploadUI = () => {
+                if (uploadProgressContainer && uploadProgressBar) {
+                    uploadProgressBar.style.width = '0%';
+                    uploadProgressBar.textContent = '0%';
+                    uploadProgressContainer.classList.add('d-none');
                 }
+                if (uploadSpeed) uploadSpeed.textContent = '';
+                if (uploadBtn) uploadBtn.disabled = false;
+                uploadToggleBtn?.setAttribute('disabled', 'disabled');
+                if (uploadToggleBtn) uploadToggleBtn.textContent = '暂停';
+                uploadCancelBtn?.setAttribute('disabled', 'disabled');
+            };
+
+            const resetUploadState = () => {
+                uploadState.queue = [];
+                uploadState.inflight.forEach((xhr) => xhr.abort());
+                uploadState.inflight.clear();
+                uploadState.paused = false;
+                uploadState.cancelled = false;
+                uploadState.totalFiles = 0;
+                uploadState.completed = 0;
+                uploadState.success = 0;
+                uploadState.totalBytes = 0;
+                uploadState.uploadedBytes = 0;
+                uploadState.startAt = 0;
+                resetUploadUI();
+            };
+
+            const updateUploadProgress = () => {
+                if (uploadProgressContainer && uploadProgressBar) {
+                    uploadProgressContainer.classList.remove('d-none');
+                    const percent = uploadState.totalFiles > 0 ? Math.floor((uploadState.completed / uploadState.totalFiles) * 100) : 0;
+                    uploadProgressBar.style.width = `${percent}%`;
+                    uploadProgressBar.textContent = `${percent}%`;
+                }
+                if (uploadSpeed) {
+                    if (uploadState.startAt > 0 && uploadState.uploadedBytes > 0) {
+                        const elapsed = (Date.now() - uploadState.startAt) / 1000;
+                        const speed = uploadState.uploadedBytes / (elapsed || 1);
+                        const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+                        let val = speed;
+                        let idx = 0;
+                        while (val >= 1024 && idx < units.length - 1) {
+                            val /= 1024;
+                            idx++;
+                        }
+                        uploadSpeed.textContent = `速度：${val.toFixed(val >= 10 ? 0 : 1)} ${units[idx]}`;
+                    } else {
+                        uploadSpeed.textContent = '';
+                    }
+                }
+            };
+
+            const startNextUpload = () => {
+                if (uploadState.cancelled || uploadState.paused) return;
+                const maxConcurrent = 3;
+                if (uploadState.inflight.size >= maxConcurrent) return;
+                const file = uploadState.queue.shift();
+                if (!file) {
+                    if (uploadState.inflight.size === 0) {
+                        if (uploadState.success > 0) {
+                            showUploadStatus(`上传完成：成功 ${uploadState.success}/${uploadState.totalFiles}，正在刷新列表...`, 'success');
+                            window.location.reload();
+                        } else {
+                            showUploadStatus('上传失败，请重试。', 'danger');
+                            resetUploadUI();
+                        }
+                    }
+                    return;
+                }
+
+                const xhr = new XMLHttpRequest();
+                uploadState.inflight.add(xhr);
+                xhr._lastLoaded = 0;
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        const delta = event.loaded - (xhr._lastLoaded || 0);
+                        xhr._lastLoaded = event.loaded;
+                        uploadState.uploadedBytes += delta;
+                        updateUploadProgress();
+                    }
+                };
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        uploadState.success++;
+                    }
+                };
+                const finalize = () => {
+                    uploadState.inflight.delete(xhr);
+                    uploadState.completed++;
+                    updateUploadProgress();
+                    startNextUpload();
+                };
+                xhr.onerror = finalize;
+                xhr.onabort = () => {
+                    if (!uploadState.cancelled) {
+                        uploadState.queue.unshift(file);
+                    }
+                    finalize();
+                };
+                xhr.onloadend = finalize;
+
+                const formData = new FormData(uploadForm);
+                formData.delete('files');
+                formData.append('files', file, file.name);
+                const token = uploadForm.querySelector('input[name=\"__RequestVerificationToken\"]')?.value;
+                xhr.open('POST', uploadForm.action);
+                if (token) xhr.setRequestHeader('RequestVerificationToken', token);
+                xhr.send(formData);
+                updateUploadProgress();
+
+                startNextUpload();
             };
 
             const handleUploadSubmit = (files) => {
@@ -525,14 +608,18 @@
                     showUploadStatus('请选择要上传的文件。', 'danger');
                     return;
                 }
+                resetUploadState();
+                uploadState.queue = Array.from(files);
+                uploadState.totalFiles = uploadState.queue.length;
+                uploadState.totalBytes = uploadState.queue.reduce((sum, f) => sum + (f.size || 0), 0);
+                uploadState.startAt = Date.now();
                 uploadBtn.disabled = true;
-                if (uploadProgressContainer && uploadProgressBar) {
-                    uploadProgressContainer.classList.remove('d-none');
-                    uploadProgressBar.style.width = '0%';
-                    uploadProgressBar.textContent = '0%';
-                }
-                showUploadStatus(`开始上传 ${files.length} 个文件...`, 'success');
-                runUploads(Array.from(files));
+                uploadToggleBtn?.removeAttribute('disabled');
+                uploadCancelBtn?.removeAttribute('disabled');
+                if (uploadToggleBtn) uploadToggleBtn.textContent = '暂停';
+                showUploadStatus(`开始上传 ${uploadState.totalFiles} 个文件...`, 'success');
+                updateUploadProgress();
+                startNextUpload();
             };
 
             if (uploadForm && uploadFile && uploadBtn) {
@@ -542,22 +629,46 @@
                 });
             }
 
-            if (dropZone && uploadFile) {
-                const highlight = () => dropZone.classList.add('drop-zone-hover');
-                const unhighlight = () => dropZone.classList.remove('drop-zone-hover');
+            if (uploadToggleBtn) {
+                uploadToggleBtn.addEventListener('click', () => {
+                    uploadState.paused = !uploadState.paused;
+                    if (uploadState.paused) {
+                        uploadToggleBtn.textContent = '继续';
+                    } else {
+                        uploadToggleBtn.textContent = '暂停';
+                        startNextUpload();
+                    }
+                });
+            }
+
+            if (uploadCancelBtn) {
+                uploadCancelBtn.addEventListener('click', () => {
+                    uploadState.cancelled = true;
+                    uploadToggleBtn?.setAttribute('disabled', 'disabled');
+                    uploadCancelBtn.setAttribute('disabled', 'disabled');
+                    uploadState.queue = [];
+                    uploadState.inflight.forEach((xhr) => xhr.abort());
+                    resetUploadUI();
+                    showUploadStatus('上传已停止。', 'danger');
+                });
+            }
+
+            if (dropTarget && uploadFile) {
+                const highlight = () => dropTarget.classList.add('drop-target-hover');
+                const unhighlight = () => dropTarget.classList.remove('drop-target-hover');
                 ['dragenter', 'dragover'].forEach(evt => {
-                    dropZone.addEventListener(evt, (e) => {
+                    dropTarget.addEventListener(evt, (e) => {
                         e.preventDefault();
                         highlight();
                     });
                 });
                 ['dragleave', 'drop'].forEach(evt => {
-                    dropZone.addEventListener(evt, (e) => {
+                    dropTarget.addEventListener(evt, (e) => {
                         e.preventDefault();
                         unhighlight();
                     });
                 });
-                dropZone.addEventListener('drop', (e) => {
+                dropTarget.addEventListener('drop', (e) => {
                     const dt = e.dataTransfer;
                     if (!dt || !dt.files || dt.files.length === 0) return;
                     uploadFile.files = dt.files;
