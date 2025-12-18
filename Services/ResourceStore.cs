@@ -254,6 +254,135 @@ public class ResourceStore : IResourceStore
         }
     }
 
+    public void Rename(ResourceTab tab, string relativePath, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new ArgumentException("Relative path is required.", nameof(relativePath));
+        }
+
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            throw new InvalidOperationException("新名称不能为空。");
+        }
+
+        if (newName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new InvalidOperationException("新名称包含非法字符。");
+        }
+
+        if (newName.Contains(Path.DirectorySeparatorChar) || newName.Contains(Path.AltDirectorySeparatorChar))
+        {
+            throw new InvalidOperationException("新名称不能包含路径分隔符。");
+        }
+
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var sourceFull = _pathHelper.ResolveSafeFullPath(subRoot, relativePath);
+
+        var parentDir = Path.GetDirectoryName(sourceFull);
+        if (string.IsNullOrEmpty(parentDir))
+        {
+            throw new InvalidOperationException("无法确定父目录，重命名终止。");
+        }
+
+        var targetFull = Path.Combine(parentDir, newName);
+
+        if (string.Equals(sourceFull, targetFull, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("新名称与原名称相同。");
+        }
+
+        if (File.Exists(targetFull) || Directory.Exists(targetFull))
+        {
+            throw new InvalidOperationException("目标名称已存在。");
+        }
+
+        if (Directory.Exists(sourceFull))
+        {
+            Directory.Move(sourceFull, targetFull);
+            _logger.LogInformation("Renamed directory: {Source} -> {Target}", sourceFull, targetFull);
+            return;
+        }
+
+        if (File.Exists(sourceFull))
+        {
+            File.Move(sourceFull, targetFull);
+            _logger.LogInformation("Renamed file: {Source} -> {Target}", sourceFull, targetFull);
+            return;
+        }
+
+        throw new FileNotFoundException("路径无效或不存在。", sourceFull);
+    }
+
+    public void MoveMany(ResourceTab tab, IEnumerable<string> relativePaths, string? targetDirectoryRelativePath)
+    {
+        if (relativePaths == null)
+        {
+            throw new ArgumentNullException(nameof(relativePaths));
+        }
+
+        var pathList = relativePaths.Where(p => p != null).ToList();
+        if (pathList.Count == 0)
+        {
+            throw new InvalidOperationException("未提供有效的路径。");
+        }
+
+        var subRoot = _pathHelper.ResolveSubRoot(tab);
+        var targetDir = _pathHelper.ResolveSafeFullPath(subRoot, targetDirectoryRelativePath);
+
+        if (!Directory.Exists(targetDir))
+        {
+            throw new DirectoryNotFoundException("目标目录不存在。");
+        }
+
+        foreach (var rawPath in pathList)
+        {
+            var trimmed = rawPath?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+            {
+                throw new InvalidOperationException("包含空的路径参数。");
+            }
+
+            var sourceFull = _pathHelper.ResolveSafeFullPath(subRoot, trimmed);
+
+            if (Directory.Exists(sourceFull))
+            {
+                if (IsSubPath(sourceFull, targetDir))
+                {
+                    throw new InvalidOperationException("不能将目录移动到其自身或子目录下。");
+                }
+            }
+
+            if (!Directory.Exists(sourceFull) && !File.Exists(sourceFull))
+            {
+                throw new FileNotFoundException("路径无效或不存在。", sourceFull);
+            }
+
+            var targetFull = Path.Combine(targetDir, Path.GetFileName(sourceFull));
+            if (File.Exists(targetFull) || Directory.Exists(targetFull))
+            {
+                throw new InvalidOperationException("目标目录下已存在同名项。");
+            }
+        }
+
+        foreach (var rawPath in pathList)
+        {
+            var sourceFull = _pathHelper.ResolveSafeFullPath(subRoot, rawPath);
+            var targetFull = Path.Combine(targetDir, Path.GetFileName(sourceFull));
+
+            if (Directory.Exists(sourceFull))
+            {
+                Directory.Move(sourceFull, targetFull);
+                _logger.LogInformation("Moved directory: {Source} -> {Target}", sourceFull, targetFull);
+            }
+            else if (File.Exists(sourceFull))
+            {
+                File.Move(sourceFull, targetFull);
+                _logger.LogInformation("Moved file: {Source} -> {Target}", sourceFull, targetFull);
+            }
+        }
+    }
+
     public List<(string entryName, Stream fileStream)> OpenStreamsForZip(ResourceTab tab, IEnumerable<string> relativePaths)
     {
         if (relativePaths == null)
@@ -377,5 +506,12 @@ public class ResourceStore : IResourceStore
     private static FileStream CreateReadStream(string fullPath)
     {
         return new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+    }
+
+    private static bool IsSubPath(string basePath, string targetPath)
+    {
+        var normalizedBase = Path.GetFullPath(basePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var normalizedTarget = Path.GetFullPath(targetPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return normalizedTarget.StartsWith(normalizedBase, StringComparison.OrdinalIgnoreCase);
     }
 }

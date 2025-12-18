@@ -97,13 +97,14 @@
 
             <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
                 <a class="btn btn-return btn-sm back-link"
-                   href="@Url.Page("/Resources/Index", new { tab = Model.SelectedTabString, path = Model.ParentPath, q = Model.Filter, sort = Model.SortFieldParam, dir = Model.SortDirectionParam })">⬅ 返回上一级</a>
+                   href="@Url.Page("/Resources/Index", new { tab = Model.SelectedTabString, path = Model.ParentPath, q = Model.Filter, sort = Model.SortFieldParam, dir = Model.SortDirectionParam })">⬅ 返回</a>
                 <button type="button" class="btn btn-primary" id="download-zip-btn" disabled>批量下载 ZIP (0)</button>
-                <button type="button" class="btn btn-outline-danger" id="delete-selected-btn" disabled>删除所选</button>
-                <div class="text-muted">已选 <span id="selected-count" class="fw-bold">0</span> 项</div>
+                <button type="button" class="btn btn-outline-danger" id="delete-selected-btn" disabled>删除</button>
+                <button type="button" class="btn btn-outline-secondary" id="move-selected-btn" disabled>移动</button>
+                <button type="button" class="btn btn-outline-dark" id="rename-selected-btn" disabled>重命名</button>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="select-all" />
-                    <label class="form-check-label" for="select-all">全选列表</label>
+                    <label class="form-check-label" for="select-all">全选</label>
                 </div>
                 <button type="button" id="create-folder-btn" class="btn btn-outline-primary btn-sm">新建文件夹</button>
                 <div class="d-flex flex-wrap align-items-center gap-2 ms-auto">
@@ -196,6 +197,24 @@
             <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
             <div id="delete-paths-container"></div>
         </form>
+        <form method="post" asp-page-handler="Move" id="move-form" class="d-none">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
+            <input type="hidden" name="q" value="@Model.Filter" />
+            <input type="hidden" name="sort" value="@Model.SortFieldParam" />
+            <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" name="targetDir" id="move-target-dir" />
+            <div id="move-paths-container"></div>
+        </form>
+        <form method="post" asp-page-handler="Rename" id="rename-form" class="d-none">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="path" value="@(Model.CurrentPath ?? string.Empty)" />
+            <input type="hidden" name="q" value="@Model.Filter" />
+            <input type="hidden" name="sort" value="@Model.SortFieldParam" />
+            <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" name="renamePath" id="rename-path" />
+            <input type="hidden" name="newName" id="rename-new-name" />
+        </form>
     </section>
 </div>
 
@@ -221,11 +240,18 @@
             const container = root || document;
             const selectAll = container.querySelector('#select-all');
             const checkboxes = Array.from(container.querySelectorAll('.entry-checkbox'));
-            const selectedCount = container.querySelector('#selected-count');
             const downloadBtn = container.querySelector('#download-zip-btn');
             const deleteBtn = container.querySelector('#delete-selected-btn');
+            const moveBtn = container.querySelector('#move-selected-btn');
+            const renameSelectedBtn = container.querySelector('#rename-selected-btn');
             const deleteForm = container.querySelector('#delete-form');
             const deletePathsContainer = container.querySelector('#delete-paths-container');
+            const moveForm = container.querySelector('#move-form');
+            const movePathsContainer = container.querySelector('#move-paths-container');
+            const moveTargetDir = container.querySelector('#move-target-dir');
+            const renameForm = container.querySelector('#rename-form');
+            const renamePath = container.querySelector('#rename-path');
+            const renameNewName = container.querySelector('#rename-new-name');
             const uploadForm = container.querySelector('#upload-form');
             const uploadFile = container.querySelector('#upload-file');
             const uploadBtn = container.querySelector('#upload-submit');
@@ -248,22 +274,27 @@
             const previewLoading = document.getElementById('preview-loading');
             const previewModal = window.bootstrap && previewModalEl ? new bootstrap.Modal(previewModalEl) : null;
 
-                const updateState = () => {
-                    const selectedItems = checkboxes.filter(cb => cb.checked);
-                    const selected = selectedItems.length;
-                    if (selectedCount) selectedCount.textContent = selected.toString();
-                    if (downloadBtn) {
-                        downloadBtn.textContent = `批量下载 ZIP (${selected})`;
-                        downloadBtn.disabled = selected === 0;
-                    }
-                    if (deleteBtn) {
-                        deleteBtn.disabled = selected === 0;
-                    }
-                    if (selectAll) {
-                    selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
-                    selectAll.checked = selected > 0 && selected === checkboxes.length;
+            const updateState = () => {
+                const selectedItems = checkboxes.filter(cb => cb.checked);
+                const selected = selectedItems.length;
+                if (downloadBtn) {
+                    downloadBtn.textContent = `批量下载 ZIP (${selected})`;
+                    downloadBtn.disabled = selected === 0;
                 }
-            };
+                if (deleteBtn) {
+                    deleteBtn.disabled = selected === 0;
+                }
+                if (moveBtn) {
+                    moveBtn.disabled = selected === 0;
+                }
+                if (renameSelectedBtn) {
+                    renameSelectedBtn.disabled = selected !== 1;
+                }
+                if (selectAll) {
+                selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
+                selectAll.checked = selected > 0 && selected === checkboxes.length;
+            }
+        };
 
             checkboxes.forEach(cb => cb.addEventListener('change', updateState));
             if (selectAll) {
@@ -515,6 +546,44 @@
                     }
                 });
             }
+
+            if (moveBtn) {
+                moveBtn.addEventListener('click', () => {
+                    const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+                    if (selected.length === 0) return;
+                    const target = prompt('请输入目标目录（相对路径，根目录留空）：', '');
+                    if (target === null) return;
+                    if (!moveForm || !movePathsContainer || !moveTargetDir) return;
+                    movePathsContainer.innerHTML = '';
+                    selected.forEach(val => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'paths';
+                        input.value = val;
+                        movePathsContainer.appendChild(input);
+                    });
+                    moveTargetDir.value = target.trim();
+                    moveForm.submit();
+                });
+            }
+
+            if (renameSelectedBtn) {
+                renameSelectedBtn.addEventListener('click', () => {
+                    const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+                    if (selected.length !== 1) return;
+                    const path = selected[0];
+                    const name = path.split('/').pop() || path;
+                    if (!renameForm || !renamePath || !renameNewName) return;
+                    const newName = prompt('请输入新名称（不含路径分隔符）：', name);
+                    if (!newName) return;
+                    const trimmed = newName.trim();
+                    if (!trimmed) return;
+                    renamePath.value = path;
+                    renameNewName.value = trimmed;
+                    renameForm.submit();
+                });
+            }
+
 
             const tabLinks = Array.from(container.querySelectorAll('.resource-tab-link'));
             const contentRoot = document.getElementById('resource-page-content');

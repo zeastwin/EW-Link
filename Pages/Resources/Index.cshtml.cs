@@ -224,6 +224,75 @@ public class IndexModel : PageModel
         });
     }
 
+    public IActionResult OnPostMove([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string[]? paths, [FromForm] string? targetDir)
+    {
+        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        {
+            return errorResult!;
+        }
+
+        var targets = paths?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList() ?? new List<string>();
+        if (targets.Count == 0)
+        {
+            ModelState.AddModelError(string.Empty, "请选择要移动的路径。");
+            return Page();
+        }
+
+        try
+        {
+            _resourceStore.MoveMany(SelectedTab, targets, targetDir);
+            TempData["SuccessMessage"] = $"已移动 {targets.Count} 项。";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "移动失败。Tab: {Tab}; Targets: {Targets}; TargetDir: {TargetDir}", SelectedTab, string.Join(',', targets), targetDir);
+            TempData["ErrorMessage"] = $"移动失败：{ex.Message}";
+        }
+
+        return RedirectToPage("/Resources/Index", new
+        {
+            tab = SelectedTabString,
+            path = CurrentPath,
+            q = Filter,
+            sort = SortFieldParam,
+            dir = SortDirectionParam
+        });
+    }
+
+    public IActionResult OnPostRename([FromForm] string? tab, [FromForm] string? path, [FromForm(Name = "q")] string? filter, [FromForm] string? sort, [FromForm] string? dir, [FromForm] string? renamePath, [FromForm] string? newName)
+    {
+        if (!TryLoadPageData(tab, path, filter, sort, dir, out var errorResult))
+        {
+            return errorResult!;
+        }
+
+        if (string.IsNullOrWhiteSpace(renamePath) || string.IsNullOrWhiteSpace(newName))
+        {
+            ModelState.AddModelError(string.Empty, "重命名参数无效。");
+            return Page();
+        }
+
+        try
+        {
+            _resourceStore.Rename(SelectedTab, renamePath, newName.Trim());
+            TempData["SuccessMessage"] = $"已重命名：{newName}";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "重命名失败。Tab: {Tab}; Path: {Path}; NewName: {NewName}", SelectedTab, renamePath, newName);
+            TempData["ErrorMessage"] = $"重命名失败：{ex.Message}";
+        }
+
+        return RedirectToPage("/Resources/Index", new
+        {
+            tab = SelectedTabString,
+            path = CurrentPath,
+            q = Filter,
+            sort = SortFieldParam,
+            dir = SortDirectionParam
+        });
+    }
+
     public IActionResult OnGetDownload([FromQuery] string? tab, [FromQuery] string? path)
     {
         if (string.IsNullOrWhiteSpace(path))

@@ -29,4 +29,14 @@ public interface IResourceStore
     /// 为批量打包打开文件流，支持目录递归收集。
     /// </summary>
     List<(string entryName, Stream fileStream)> OpenStreamsForZip(ResourceTab tab, IEnumerable<string> relativePaths);
+
+    /// <summary>
+    /// 重命名文件或文件夹（同级内）。
+    /// </summary>
+    void Rename(ResourceTab tab, string relativePath, string newName);
+
+    /// <summary>
+    /// 批量移动文件或文件夹到目标目录。
+    /// </summary>
+    void MoveMany(ResourceTab tab, IEnumerable<string> relativePaths, string? targetDirectoryRelativePath);
 }

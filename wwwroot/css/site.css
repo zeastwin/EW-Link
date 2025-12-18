@@ -107,13 +107,13 @@ body {
 }
 
 .btn-return {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  background: #f1f5f9;
   border: 1px solid #cbd5e1;
   color: #1f2937;
 }
 
 .btn-return:hover {
-  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  background: #e2e8f0;
   color: #0f172a;
 }
 
