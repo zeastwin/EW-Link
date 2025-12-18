@@ -22,6 +22,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - D:/Data/resources:/Data/resources
+      - D:/Data/nginx_client_temp:/var/cache/nginx/client_temp
     restart: unless-stopped
 
 volumes:

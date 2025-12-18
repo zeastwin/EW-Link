@@ -11,7 +11,7 @@
 ## 存储模型与限制
 - 资源根目录默认 `/Data/resources`，可通过环境变量 `RESOURCES_ROOT` 或配置键 `Resources:Root` 覆盖（本地 `appsettings.json` 指向 `D:\Data\resources`）。
 - 子目录名为 `永久文件夹`（永久区）与 `临时文件夹`（临时区），可在 `ResourceOptions` 配置。
-- 上传限制 10GB，由 Kestrel 请求限制与 `ResourceStore` 双重校验，nginx `client_max_body_size` 亦同步为 10GB；请求头超时时间 2 分钟。
+- 上传限制 10GB，由 Kestrel 请求限制与 `ResourceStore` 双重校验，nginx `client_max_body_size` 亦同步为 10GB；请求头超时时间 2 分钟，上传保持连接/超时时间调高（Kestrel KeepAlive 4 小时并禁用上传速率限速，nginx 读写/请求缓冲关闭，超时 14400s）。
 - 数据保护密钥持久化路径由环境变量 `DATA_PROTECTION_KEYS_ROOT` 控制，默认 `/var/aspnet-keys`（Docker 挂载到宿主 `resources_keys` 卷）。
 - 分享直链可配置外部基址 `Share:PublicBaseUrl`，生成的下载链接会优先使用该域名/端口，未配置时回落当前请求 Host。
 

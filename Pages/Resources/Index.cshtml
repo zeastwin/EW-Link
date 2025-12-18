@@ -517,7 +517,13 @@
             const updateUploadProgress = () => {
                 if (uploadProgressContainer && uploadProgressBar) {
                     uploadProgressContainer.classList.remove('d-none');
-                    const percent = uploadState.totalFiles > 0 ? Math.floor((uploadState.completed / uploadState.totalFiles) * 100) : 0;
+                    let percent = 0;
+                    if (uploadState.totalBytes > 0) {
+                        percent = Math.floor((uploadState.uploadedBytes / uploadState.totalBytes) * 100);
+                    } else if (uploadState.totalFiles > 0) {
+                        percent = Math.floor((uploadState.completed / uploadState.totalFiles) * 100);
+                    }
+                    if (percent > 100) percent = 100;
                     uploadProgressBar.style.width = `${percent}%`;
                     uploadProgressBar.textContent = `${percent}%`;
                 }
@@ -560,6 +566,7 @@
                 const xhr = new XMLHttpRequest();
                 uploadState.inflight.add(xhr);
                 xhr._lastLoaded = 0;
+                xhr._expectedSize = file.size || 0;
                 xhr.upload.onprogress = (event) => {
                     if (event.lengthComputable) {
                         const delta = event.loaded - (xhr._lastLoaded || 0);
@@ -575,6 +582,11 @@
                 };
                 const finalize = () => {
                     uploadState.inflight.delete(xhr);
+                    const remaining = Math.max(0, (xhr._expectedSize || 0) - (xhr._lastLoaded || 0));
+                    uploadState.uploadedBytes += remaining;
+                    if (uploadState.uploadedBytes > uploadState.totalBytes) {
+                        uploadState.uploadedBytes = uploadState.totalBytes;
+                    }
                     uploadState.completed++;
                     updateUploadProgress();
                     startNextUpload();
@@ -632,6 +644,7 @@
                     uploadCancelBtn.setAttribute('disabled', 'disabled');
                     uploadState.queue = [];
                     uploadState.inflight.forEach((xhr) => xhr.abort());
+                    uploadState.uploadedBytes = 0;
                     resetUploadUI();
                     showUploadStatus('上传已停止。', 'danger');
                 });

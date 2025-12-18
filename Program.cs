@@ -8,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 const long uploadLimitBytes = 10L * 1024 * 1024 * 1024;
 var requestHeadersTimeout = TimeSpan.FromMinutes(2);
+var uploadTimeout = TimeSpan.FromHours(4);
 
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -18,6 +19,8 @@ builder.WebHost.ConfigureKestrel(options =>
 {
     options.Limits.MaxRequestBodySize = uploadLimitBytes;
     options.Limits.RequestHeadersTimeout = requestHeadersTimeout;
+    options.Limits.KeepAliveTimeout = uploadTimeout;
+    options.Limits.MinRequestBodyDataRate = null; // 允许大文件/慢速上传
 });
 
 builder.Services.Configure<ResourceOptions>(builder.Configuration.GetSection("Resources"));
