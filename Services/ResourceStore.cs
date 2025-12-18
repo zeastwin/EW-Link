@@ -84,7 +84,7 @@ public class ResourceStore : IResourceStore
                 RelativePath = CombineRelativePath(relativePath, dirName),
                 IsDirectory = true,
                 SizeBytes = 0,
-                LastWriteTime = new DateTimeOffset(Directory.GetLastWriteTimeUtc(dir))
+                LastWriteTime = new DateTimeOffset(Directory.GetLastWriteTime(dir))
             });
         }
 
@@ -97,7 +97,7 @@ public class ResourceStore : IResourceStore
                 RelativePath = CombineRelativePath(relativePath, info.Name),
                 IsDirectory = false,
                 SizeBytes = info.Length,
-                LastWriteTime = new DateTimeOffset(info.LastWriteTimeUtc)
+                LastWriteTime = new DateTimeOffset(info.LastWriteTime)
             });
         }
 
@@ -209,6 +209,7 @@ public class ResourceStore : IResourceStore
             }
 
             File.Move(tempPath, targetPath);
+            File.SetLastWriteTime(targetPath, DateTime.Now);
         }
         catch
         {
@@ -234,7 +235,7 @@ public class ResourceStore : IResourceStore
             RelativePath = CombineRelativePath(relativePath, info.Name),
             IsDirectory = false,
             SizeBytes = info.Length,
-            LastWriteTime = new DateTimeOffset(info.LastWriteTimeUtc)
+            LastWriteTime = new DateTimeOffset(info.LastWriteTime)
         };
     }
 
