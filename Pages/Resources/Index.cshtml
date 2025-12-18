@@ -241,6 +241,9 @@
                                             data-name="@entry.Name">预览</button>
                                     <a class="btn btn-outline-primary btn-sm download-link"
                                        data-download-url="@Url.Page("/Resources/Index", "Download", new { tab = Model.SelectedTabString, path = entry.RelativePath })">下载</a>
+                                    <button type="button"
+                                            class="btn btn-outline-light border btn-sm share-btn text-muted"
+                                            data-share-path="@entry.RelativePath">分享</button>
                                 }
                             </div>
                         </div>
@@ -277,6 +280,10 @@
             <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
             <input type="hidden" name="renamePath" id="rename-path" />
             <input type="hidden" name="newName" id="rename-new-name" />
+        </form>
+        <form method="post" asp-page-handler="CreateShare" id="share-form" class="d-none">
+            <input type="hidden" name="tab" value="@Model.SelectedTabString" />
+            <input type="hidden" name="target" id="share-target" />
         </form>
         <form method="post" asp-page-handler="RestoreTrash" id="restore-form" class="d-none">
             <input type="hidden" name="tab" value="@Model.SelectedTabString" />
@@ -385,6 +392,9 @@
             const previewMessage = document.getElementById('preview-message');
             const previewLoading = document.getElementById('preview-loading');
             const previewModal = window.bootstrap && previewModalEl ? new bootstrap.Modal(previewModalEl) : null;
+            const shareButtons = Array.from(container.querySelectorAll('.share-btn'));
+            const shareForm = container.querySelector('#share-form');
+            const shareTarget = container.querySelector('#share-target');
 
             const updateState = () => {
                 const selectedItems = checkboxes.filter(cb => cb.checked);
@@ -821,6 +831,40 @@
                     renameForm.submit();
                 });
             }
+
+            const copyShareLink = (text) => {
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text).catch(() => {});
+                    alert('分享链接已复制。');
+                } else {
+                    alert(`分享链接：${text}`);
+                }
+            };
+
+            shareButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const path = btn.getAttribute('data-share-path');
+                    if (!path || !shareForm || !shareTarget) return;
+                    shareTarget.value = path;
+                    const formData = new FormData(shareForm);
+                    const token = shareForm.querySelector('input[name="__RequestVerificationToken"]')?.value;
+                    const headers = token ? { 'RequestVerificationToken': token } : {};
+                    fetch(shareForm.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers
+                    })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.success && data.url) {
+                                copyShareLink(data.url);
+                            } else {
+                                alert(data.message || '分享链接生成失败。');
+                            }
+                        })
+                        .catch(() => alert('分享链接生成失败。'));
+                });
+            });
 
 
             const tabLinks = Array.from(container.querySelectorAll('.resource-tab-link'));

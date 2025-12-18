@@ -23,16 +23,18 @@ public class IndexModel : PageModel
     private readonly IResourceStore _resourceStore;
     private readonly ILogger<IndexModel> _logger;
     private readonly IZipStreamService _zipStreamService;
+    private readonly IShareLinkService _shareLinkService;
     private static readonly HashSet<string> TextPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".txt", ".log", ".json", ".xml", ".cs", ".js", ".css", ".html", ".md", ".ini", ".config"
     };
 
-    public IndexModel(IResourceStore resourceStore, ILogger<IndexModel> logger, IZipStreamService zipStreamService)
+    public IndexModel(IResourceStore resourceStore, ILogger<IndexModel> logger, IZipStreamService zipStreamService, IShareLinkService shareLinkService)
     {
         _resourceStore = resourceStore ?? throw new ArgumentNullException(nameof(resourceStore));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _zipStreamService = zipStreamService ?? throw new ArgumentNullException(nameof(zipStreamService));
+        _shareLinkService = shareLinkService ?? throw new ArgumentNullException(nameof(shareLinkService));
     }
 
     public ResourceTab SelectedTab { get; private set; }
@@ -693,6 +695,61 @@ public class IndexModel : PageModel
     {
         return string.Equals(contentType, "application/zip", StringComparison.OrdinalIgnoreCase)
                || string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public IActionResult OnPostCreateShare([FromForm] string? tab, [FromForm] string? target)
+    {
+        var selectedTab = ParseTab(tab);
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return new JsonResult(new { success = false, message = "路径无效。" });
+        }
+
+        try
+        {
+            var token = _shareLinkService.GenerateToken(selectedTab, target, DateTimeOffset.UtcNow.AddDays(7));
+            var url = Url.Page("/Resources/Index", "ShareDownload", new { token }, Request.Scheme);
+            return new JsonResult(new { success = true, url });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            _logger.LogWarning(ex, "生成分享链接失败。Tab: {Tab}; Path: {Path}", selectedTab, target);
+            return new JsonResult(new { success = false, message = "生成分享链接失败。" });
+        }
+    }
+
+    public IActionResult OnGetShareDownload([FromQuery] string? token)
+    {
+        if (!_shareLinkService.TryParseToken(token ?? string.Empty, out var tab, out var path))
+        {
+            return BadRequest("链接无效或已过期。");
+        }
+
+        FileStream? stream = null;
+        try
+        {
+            stream = _resourceStore.OpenRead(tab, path);
+            var fileName = Path.GetFileName(path);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                fileName = "download";
+            }
+
+            var provider = new FileExtensionContentTypeProvider();
+            if (!provider.TryGetContentType(fileName, out var contentType))
+            {
+                contentType = "application/octet-stream";
+            }
+
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return File(stream, contentType, fileName);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            stream?.Dispose();
+            _logger.LogWarning(ex, "分享链接下载失败。Tab: {Tab}; Path: {Path}", tab, path);
+            return BadRequest("链接无效或文件不存在。");
+        }
     }
 
     private string BuildPreviewFileUrl(ResourceTab tab, string path)
