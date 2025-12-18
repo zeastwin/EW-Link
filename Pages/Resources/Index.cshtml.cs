@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace EW_Link.Pages.Resources;
@@ -24,17 +25,19 @@ public class IndexModel : PageModel
     private readonly ILogger<IndexModel> _logger;
     private readonly IZipStreamService _zipStreamService;
     private readonly IShareLinkService _shareLinkService;
+    private readonly string? _shareBaseUrl;
     private static readonly HashSet<string> TextPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".txt", ".log", ".json", ".xml", ".cs", ".js", ".css", ".html", ".md", ".ini", ".config"
     };
 
-    public IndexModel(IResourceStore resourceStore, ILogger<IndexModel> logger, IZipStreamService zipStreamService, IShareLinkService shareLinkService)
+    public IndexModel(IResourceStore resourceStore, ILogger<IndexModel> logger, IZipStreamService zipStreamService, IShareLinkService shareLinkService, IConfiguration configuration)
     {
         _resourceStore = resourceStore ?? throw new ArgumentNullException(nameof(resourceStore));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _zipStreamService = zipStreamService ?? throw new ArgumentNullException(nameof(zipStreamService));
         _shareLinkService = shareLinkService ?? throw new ArgumentNullException(nameof(shareLinkService));
+        _shareBaseUrl = configuration?["Share:PublicBaseUrl"];
     }
 
     public ResourceTab SelectedTab { get; private set; }
@@ -697,30 +700,31 @@ public class IndexModel : PageModel
                || string.Equals(Path.GetExtension(fileName), ".zip", StringComparison.OrdinalIgnoreCase);
     }
 
-    public IActionResult OnPostCreateShare([FromForm] string? tab, [FromForm] string? target)
+    public IActionResult OnPostCreateShare([FromForm] string? tab, [FromForm] string[]? targets)
     {
         var selectedTab = ParseTab(tab);
-        if (string.IsNullOrWhiteSpace(target))
+        var paths = targets?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+        if (paths == null || paths.Count == 0)
         {
-            return new JsonResult(new { success = false, message = "路径无效。" });
+            return new JsonResult(new { success = false, message = "请选择有效的路径。" });
         }
 
         try
         {
-            var token = _shareLinkService.GenerateToken(selectedTab, target, DateTimeOffset.UtcNow.AddDays(7));
-            var url = Url.Page("/Resources/Index", "ShareDownload", new { token }, Request.Scheme);
+            var token = _shareLinkService.GenerateToken(selectedTab, paths, DateTimeOffset.UtcNow.AddDays(7));
+            var url = BuildShareUrl(token);
             return new JsonResult(new { success = true, url });
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
         {
-            _logger.LogWarning(ex, "生成分享链接失败。Tab: {Tab}; Path: {Path}", selectedTab, target);
+            _logger.LogWarning(ex, "生成分享链接失败。Tab: {Tab}; Paths: {Paths}", selectedTab, string.Join(',', paths));
             return new JsonResult(new { success = false, message = "生成分享链接失败。" });
         }
     }
 
-    public IActionResult OnGetShareDownload([FromQuery] string? token)
+    public async Task<IActionResult> OnGetShareDownload([FromQuery] string? token)
     {
-        if (!_shareLinkService.TryParseToken(token ?? string.Empty, out var tab, out var path))
+        if (!_shareLinkService.TryParseToken(token ?? string.Empty, out var tab, out var paths, out _))
         {
             return BadRequest("链接无效或已过期。");
         }
@@ -728,27 +732,76 @@ public class IndexModel : PageModel
         FileStream? stream = null;
         try
         {
-            stream = _resourceStore.OpenRead(tab, path);
-            var fileName = Path.GetFileName(path);
-            if (string.IsNullOrWhiteSpace(fileName))
+            if (paths.Count == 1)
             {
-                fileName = "download";
+                var path = paths[0];
+                try
+                {
+                    stream = _resourceStore.OpenRead(tab, path);
+                    var fileName = Path.GetFileName(path);
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        fileName = "download";
+                    }
+
+                    var provider = new FileExtensionContentTypeProvider();
+                    if (!provider.TryGetContentType(fileName, out var contentType))
+                    {
+                        contentType = "application/octet-stream";
+                    }
+
+                    Response.Headers["X-Content-Type-Options"] = "nosniff";
+                    return File(stream, contentType, fileName);
+                }
+                catch (InvalidOperationException)
+                {
+                    stream?.Dispose();
+                    // 如果是目录，则转为打包下载
+                }
             }
 
-            var provider = new FileExtensionContentTypeProvider();
-            if (!provider.TryGetContentType(fileName, out var contentType))
+            var streams = _resourceStore.OpenStreamsForZip(tab, paths);
+            Response.ContentType = "application/zip";
+            Response.Headers["Content-Disposition"] = "attachment; filename=\"share.zip\"";
+            await using var responseStream = Response.BodyWriter.AsStream(leaveOpen: true);
+            await _zipStreamService.WriteZipAsync(responseStream, streams, HttpContext.RequestAborted);
+            foreach (var entry in streams)
             {
-                contentType = "application/octet-stream";
+                entry.fileStream.Dispose();
             }
-
-            Response.Headers["X-Content-Type-Options"] = "nosniff";
-            return File(stream, contentType, fileName);
+            return new EmptyResult();
         }
         catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
         {
             stream?.Dispose();
-            _logger.LogWarning(ex, "分享链接下载失败。Tab: {Tab}; Path: {Path}", tab, path);
+            _logger.LogWarning(ex, "分享链接下载失败。Tab: {Tab}; Paths: {Paths}", tab, string.Join(',', paths));
             return BadRequest("链接无效或文件不存在。");
+        }
+    }
+
+    private string BuildShareUrl(string token)
+    {
+        var relative = Url.Page("/Resources/Index", "ShareDownload", new { token });
+        if (string.IsNullOrWhiteSpace(relative))
+        {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(_shareBaseUrl))
+        {
+            return Url.Page("/Resources/Index", "ShareDownload", new { token }, Request.Scheme) ?? string.Empty;
+        }
+
+        try
+        {
+            var baseUri = new Uri(_shareBaseUrl, UriKind.Absolute);
+            var final = new Uri(baseUri, relative);
+            return final.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "拼接分享链接基址失败：{BaseUrl}", _shareBaseUrl);
+            return Url.Page("/Resources/Index", "ShareDownload", new { token }, Request.Scheme) ?? string.Empty;
         }
     }
 

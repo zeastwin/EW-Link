@@ -17,17 +17,19 @@ public class ShareLinkService : IShareLinkService
         _protector = provider.CreateProtector(Purpose);
     }
 
-    public string GenerateToken(ResourceTab tab, string path, DateTimeOffset expiresAt)
+    public string GenerateToken(ResourceTab tab, IEnumerable<string> paths, DateTimeOffset expiresAt)
     {
-        if (string.IsNullOrWhiteSpace(path))
+        var list = paths?.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).ToList()
+                   ?? throw new ArgumentNullException(nameof(paths));
+        if (list.Count == 0)
         {
-            throw new ArgumentException("Path is required.", nameof(path));
+            throw new ArgumentException("At least one path is required.", nameof(paths));
         }
 
         var payload = new SharePayload
         {
             Tab = tab == ResourceTab.Temporary ? "temporary" : "permanent",
-            Path = path,
+            Paths = list,
             ExpiresAt = expiresAt
         };
 
@@ -36,10 +38,11 @@ public class ShareLinkService : IShareLinkService
         return WebEncoders.Base64UrlEncode(protectedBytes);
     }
 
-    public bool TryParseToken(string token, out ResourceTab tab, out string path)
+    public bool TryParseToken(string token, out ResourceTab tab, out List<string> paths, out DateTimeOffset expiresAt)
     {
         tab = ResourceTab.Permanent;
-        path = string.Empty;
+        paths = new List<string>();
+        expiresAt = DateTimeOffset.MinValue;
 
         if (string.IsNullOrWhiteSpace(token))
         {
@@ -52,7 +55,7 @@ public class ShareLinkService : IShareLinkService
             var unprotected = _protector.Unprotect(bytes);
             var json = Encoding.UTF8.GetString(unprotected);
             var payload = JsonSerializer.Deserialize<SharePayload>(json);
-            if (payload == null || string.IsNullOrWhiteSpace(payload.Path))
+            if (payload == null || payload.Paths == null || payload.Paths.Count == 0)
             {
                 return false;
             }
@@ -65,7 +68,8 @@ public class ShareLinkService : IShareLinkService
             tab = string.Equals(payload.Tab, "temporary", StringComparison.OrdinalIgnoreCase)
                 ? ResourceTab.Temporary
                 : ResourceTab.Permanent;
-            path = payload.Path;
+            paths = payload.Paths;
+            expiresAt = payload.ExpiresAt;
             return true;
         }
         catch
@@ -77,7 +81,7 @@ public class ShareLinkService : IShareLinkService
     private class SharePayload
     {
         public string Tab { get; set; } = default!;
-        public string Path { get; set; } = default!;
+        public List<string> Paths { get; set; } = new();
         public DateTimeOffset ExpiresAt { get; set; }
     }
 }

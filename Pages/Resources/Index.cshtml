@@ -158,6 +158,7 @@
                 <a class="btn btn-return btn-sm back-link"
                    href="@Url.Page("/Resources/Index", new { tab = Model.SelectedTabString, path = Model.ParentPath, q = Model.Filter, sort = Model.SortFieldParam, dir = Model.SortDirectionParam })">⬅ 返回</a>
                 <button type="button" class="btn btn-primary" id="download-zip-btn" disabled>批量下载 ZIP (0)</button>
+                <button type="button" class="btn btn-outline-primary" id="share-selected-btn" disabled>分享</button>
                 <button type="button" class="btn btn-outline-danger" id="delete-selected-btn" disabled>删除</button>
                 <button type="button" class="btn btn-outline-secondary" id="move-selected-btn" disabled>移动</button>
                 <button type="button" class="btn btn-outline-dark" id="rename-selected-btn" disabled>重命名</button>
@@ -241,9 +242,6 @@
                                             data-name="@entry.Name">预览</button>
                                     <a class="btn btn-outline-primary btn-sm download-link"
                                        data-download-url="@Url.Page("/Resources/Index", "Download", new { tab = Model.SelectedTabString, path = entry.RelativePath })">下载</a>
-                                    <button type="button"
-                                            class="btn btn-outline-light border btn-sm share-btn text-muted"
-                                            data-share-path="@entry.RelativePath">分享</button>
                                 }
                             </div>
                         </div>
@@ -283,7 +281,7 @@
         </form>
         <form method="post" asp-page-handler="CreateShare" id="share-form" class="d-none">
             <input type="hidden" name="tab" value="@Model.SelectedTabString" />
-            <input type="hidden" name="target" id="share-target" />
+            <div id="share-targets-container"></div>
         </form>
         <form method="post" asp-page-handler="RestoreTrash" id="restore-form" class="d-none">
             <input type="hidden" name="tab" value="@Model.SelectedTabString" />
@@ -337,6 +335,26 @@
     </div>
 </div>
 
+<div class="modal fade" id="share-modal" tabindex="-1" aria-labelledby="share-modal-title" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="share-modal-title">分享链接</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted small mb-2">请手动复制分享链接：</div>
+                <input type="text" class="form-control" id="share-link-input" readonly />
+                <div id="share-copy-status" class="small mt-2 text-muted invisible" style="min-height: 1.25rem;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="share-copy-btn">复制链接</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script>
         function initResourcePage(root) {
@@ -371,6 +389,9 @@
             const restorePathsContainer = container.querySelector('#restore-paths-container');
             const purgeForm = container.querySelector('#purge-form');
             const purgePathsContainer = container.querySelector('#purge-paths-container');
+            const shareSelectedBtn = container.querySelector('#share-selected-btn');
+            const shareForm = container.querySelector('#share-form');
+            const shareTargetsContainer = container.querySelector('#share-targets-container');
             const uploadForm = container.querySelector('#upload-form');
             const uploadFile = container.querySelector('#upload-file');
             const uploadBtn = container.querySelector('#upload-submit');
@@ -392,9 +413,11 @@
             const previewMessage = document.getElementById('preview-message');
             const previewLoading = document.getElementById('preview-loading');
             const previewModal = window.bootstrap && previewModalEl ? new bootstrap.Modal(previewModalEl) : null;
-            const shareButtons = Array.from(container.querySelectorAll('.share-btn'));
-            const shareForm = container.querySelector('#share-form');
-            const shareTarget = container.querySelector('#share-target');
+            const shareModalEl = document.getElementById('share-modal');
+            const shareModal = window.bootstrap && shareModalEl ? new bootstrap.Modal(shareModalEl) : null;
+            const shareLinkInput = document.getElementById('share-link-input');
+            const shareCopyBtn = document.getElementById('share-copy-btn');
+            const shareCopyStatus = document.getElementById('share-copy-status');
 
             const updateState = () => {
                 const selectedItems = checkboxes.filter(cb => cb.checked);
@@ -417,6 +440,9 @@
                 }
                 if (purgeBtn) {
                     purgeBtn.disabled = selected === 0;
+                }
+                if (shareSelectedBtn) {
+                    shareSelectedBtn.disabled = selected === 0;
                 }
                 if (selectAll) {
                 selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
@@ -832,20 +858,65 @@
                 });
             }
 
-            const copyShareLink = (text) => {
+            const setShareStatus = (text, isError = false) => {
+                if (!shareCopyStatus) return;
+                shareCopyStatus.textContent = text;
+                shareCopyStatus.classList.remove('invisible', 'text-danger', 'text-success');
+                shareCopyStatus.classList.add(isError ? 'text-danger' : 'text-success');
+            };
+
+            const resetShareStatus = () => {
+                if (!shareCopyStatus) return;
+                shareCopyStatus.textContent = '';
+                shareCopyStatus.classList.add('invisible');
+                shareCopyStatus.classList.remove('text-danger', 'text-success');
+            };
+
+            const copyShareLink = async () => {
+                const text = shareLinkInput?.value || '';
+                if (!text) {
+                    setShareStatus('暂无可复制的链接。', true);
+                    return;
+                }
                 if (navigator.clipboard && window.isSecureContext) {
-                    navigator.clipboard.writeText(text).catch(() => {});
-                    alert('分享链接已复制。');
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        setShareStatus('已复制到剪贴板。');
+                        return;
+                    } catch {
+                        // fallthrough to手动
+                    }
+                }
+                if (shareLinkInput) {
+                    shareLinkInput.focus();
+                    shareLinkInput.select();
+                }
+                const ok = document.execCommand && document.execCommand('copy');
+                if (ok) {
+                    setShareStatus('已复制到剪贴板。');
                 } else {
-                    alert(`分享链接：${text}`);
+                    setShareStatus('未能自动复制，请手动复制。', true);
                 }
             };
 
-            shareButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const path = btn.getAttribute('data-share-path');
-                    if (!path || !shareForm || !shareTarget) return;
-                    shareTarget.value = path;
+            if (shareCopyBtn) {
+                shareCopyBtn.addEventListener('click', () => {
+                    copyShareLink();
+                });
+            }
+
+            if (shareSelectedBtn) {
+                shareSelectedBtn.addEventListener('click', () => {
+                    const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+                    if (selected.length === 0 || !shareForm || !shareTargetsContainer) return;
+                    shareTargetsContainer.innerHTML = '';
+                    selected.forEach(val => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'targets';
+                        input.value = val;
+                        shareTargetsContainer.appendChild(input);
+                    });
                     const formData = new FormData(shareForm);
                     const token = shareForm.querySelector('input[name="__RequestVerificationToken"]')?.value;
                     const headers = token ? { 'RequestVerificationToken': token } : {};
@@ -856,15 +927,23 @@
                     })
                         .then(res => res.json())
                         .then(data => {
-                            if (data.success && data.url) {
-                                copyShareLink(data.url);
-                            } else {
+                            if (!data.success || !data.url) {
                                 alert(data.message || '分享链接生成失败。');
+                                return;
+                            }
+                            resetShareStatus();
+                            if (shareLinkInput) {
+                                shareLinkInput.value = data.url;
+                            }
+                            if (shareModal) {
+                                shareModal.show();
+                            } else {
+                                alert(`分享链接：${data.url}`);
                             }
                         })
                         .catch(() => alert('分享链接生成失败。'));
                 });
-            });
+            }
 
 
             const tabLinks = Array.from(container.querySelectorAll('.resource-tab-link'));
