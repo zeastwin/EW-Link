@@ -131,6 +131,66 @@ body {
   min-width: 240px;
 }
 
+.action-panel .btn-outline-primary {
+  border-color: #d8e2f5;
+  color: #2563eb;
+  background: #fff;
+}
+
+.action-panel .btn-outline-primary:hover {
+  background: #ecf2ff;
+  border-color: #c7d6f5;
+  color: #1d4ed8;
+}
+
+.action-panel .btn-outline-secondary {
+  border-color: #dcdfe6;
+  color: #475569;
+  background: #fff;
+}
+
+.action-panel .btn-outline-secondary:hover {
+  background: #f2f4f8;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+.action-panel .btn-outline-danger {
+  border-color: #f5d5da;
+  color: #dc3545;
+  background: #fff;
+}
+
+.action-panel .btn-outline-danger:hover {
+  background: #fef2f2;
+  border-color: #f1bcc4;
+  color: #b91c1c;
+}
+
+.action-panel .btn-outline-light {
+  border-color: #e5e7eb;
+  color: #4b5563;
+  background: #fff;
+}
+
+.action-panel .btn-outline-light:hover {
+  background: #f8fafc;
+  border-color: #dfe2e7;
+  color: #111827;
+}
+
+.action-panel .btn-outline-dark {
+  border-color: #d8dee5;
+  color: #1f2937;
+  background: #fff;
+}
+
+.action-panel .btn-outline-dark:hover {
+  background: #f1f5f9;
+  border-color: #cfd6de;
+  color: #111827;
+}
+
 .breadcrumb-bar {
   padding: 8px 12px;
   border-radius: 10px;
