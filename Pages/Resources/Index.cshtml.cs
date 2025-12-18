@@ -330,6 +330,30 @@ public class IndexModel : PageModel
         }
     }
 
+    public IActionResult OnGetDirs([FromQuery] string? tab, [FromQuery] string? path)
+    {
+        var selectedTab = ParseTab(tab);
+        try
+        {
+            var entries = _resourceStore.List(selectedTab, path ?? string.Empty, null, ResourceSortField.Name, SortDirection.Asc)
+                .Where(e => e.IsDirectory)
+                .Select(e => new { name = e.Name, path = e.RelativePath })
+                .ToList();
+            return new JsonResult(new
+            {
+                success = true,
+                currentPath = path ?? string.Empty,
+                parentPath = CalculateParentPath(path),
+                items = entries
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or DirectoryNotFoundException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "获取目录列表失败。Tab: {Tab}; Path: {Path}", selectedTab, path);
+            return new JsonResult(new { success = false, message = "加载目录失败：路径无效或不存在。" });
+        }
+    }
+
     public async Task<IActionResult> OnGetPreview([FromQuery] string? tab, [FromQuery] string? path)
     {
         if (string.IsNullOrWhiteSpace(path))

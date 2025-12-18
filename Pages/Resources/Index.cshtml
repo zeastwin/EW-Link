@@ -94,6 +94,7 @@
             <input type="hidden" name="q" value="@Model.Filter" />
             <input type="hidden" name="sort" value="@Model.SortFieldParam" />
             <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
+            <input type="hidden" id="dirs-endpoint" value="@Url.Page("/Resources/Index", "Dirs", new { tab = Model.SelectedTabString })" />
 
             <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
                 <a class="btn btn-return btn-sm back-link"
@@ -234,6 +235,29 @@
     </div>
 </div>
 
+<div class="modal fade" id="move-modal" tabindex="-1" aria-labelledby="move-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="move-modal-title">移动到</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <div class="text-muted small" id="move-current-path">/</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="move-up-btn">上一级</button>
+                </div>
+                <div id="move-message" class="alert alert-warning d-none"></div>
+                <div id="move-list" class="list-group"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="move-confirm-btn" disabled>移动到此</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script>
         function initResourcePage(root) {
@@ -249,6 +273,16 @@
             const moveForm = container.querySelector('#move-form');
             const movePathsContainer = container.querySelector('#move-paths-container');
             const moveTargetDir = container.querySelector('#move-target-dir');
+            const moveModalEl = document.getElementById('move-modal');
+            const moveModal = window.bootstrap && moveModalEl ? new bootstrap.Modal(moveModalEl) : null;
+            const moveList = document.getElementById('move-list');
+            const moveMessage = document.getElementById('move-message');
+            const moveCurrentPathEl = document.getElementById('move-current-path');
+            const moveUpBtn = document.getElementById('move-up-btn');
+            const moveConfirmBtn = document.getElementById('move-confirm-btn');
+            const dirsEndpoint = document.getElementById('dirs-endpoint')?.value;
+            let moveCurrentPath = '';
+            let pendingMovePaths = [];
             const renameForm = container.querySelector('#rename-form');
             const renamePath = container.querySelector('#rename-path');
             const renameNewName = container.querySelector('#rename-new-name');
@@ -493,6 +527,102 @@
                     });
             };
 
+            const renderMoveList = (data) => {
+                if (!moveList || !moveConfirmBtn) return;
+                moveList.innerHTML = '';
+                moveConfirmBtn.disabled = false;
+                if (!data?.success) {
+                    moveMessage?.classList.remove('d-none');
+                    if (moveMessage) moveMessage.textContent = data?.message || '加载目录失败。';
+                    moveConfirmBtn.disabled = true;
+                    return;
+                }
+                moveMessage?.classList.add('d-none');
+                if (moveCurrentPathEl) {
+                    const displayPath = data.currentPath ? `/${data.currentPath}` : '/';
+                    moveCurrentPathEl.textContent = displayPath;
+                }
+                const items = data.items || [];
+                if (items.length === 0) {
+                    const empty = document.createElement('div');
+                    empty.className = 'list-group-item text-muted';
+                    empty.textContent = '当前目录下暂无子目录';
+                    moveList.appendChild(empty);
+                } else {
+                    items.forEach(item => {
+                        const row = document.createElement('button');
+                        row.type = 'button';
+                        row.className = 'list-group-item list-group-item-action d-flex align-items-center gap-2';
+                        row.innerHTML = `<span>📁</span><span class="fw-semibold">${item.name || ''}</span>`;
+                        row.addEventListener('click', () => {
+                            moveCurrentPath = item.path || '';
+                            loadMoveList(moveCurrentPath);
+                        });
+                        moveList.appendChild(row);
+                    });
+                }
+            };
+
+            const loadMoveList = (path) => {
+                if (!dirsEndpoint) return;
+                moveConfirmBtn?.setAttribute('disabled', 'disabled');
+                if (moveMessage) {
+                    moveMessage.classList.add('d-none');
+                    moveMessage.textContent = '';
+                }
+                moveList && (moveList.innerHTML = '<div class="list-group-item text-muted">加载中...</div>');
+                const url = new URL(dirsEndpoint, window.location.origin);
+                url.searchParams.set('path', path || '');
+                fetch(url, { headers: { 'X-Requested-With': 'Fetch', 'Accept': 'application/json' } })
+                    .then(res => res.ok ? res.json() : Promise.reject())
+                    .then(data => renderMoveList(data))
+                    .catch(() => {
+                        if (moveMessage) {
+                            moveMessage.textContent = '加载目录失败，请重试。';
+                            moveMessage.classList.remove('d-none');
+                        }
+                        moveConfirmBtn?.setAttribute('disabled', 'disabled');
+                    });
+            };
+
+            const openMoveModal = () => {
+                if (moveModal) {
+                    moveModal.show();
+                } else if (moveModalEl) {
+                    moveModalEl.classList.add('show', 'd-block');
+                }
+            };
+
+            if (moveUpBtn) {
+                moveUpBtn.addEventListener('click', () => {
+                    if (!moveCurrentPath) {
+                        loadMoveList('');
+                        return;
+                    }
+                    const parts = moveCurrentPath.split('/').filter(Boolean);
+                    parts.pop();
+                    moveCurrentPath = parts.join('/');
+                    loadMoveList(moveCurrentPath);
+                });
+            }
+
+            if (moveConfirmBtn) {
+                moveConfirmBtn.addEventListener('click', () => {
+                    if (!moveForm || !movePathsContainer || !moveTargetDir) return;
+                    movePathsContainer.innerHTML = '';
+                    pendingMovePaths.forEach(val => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'paths';
+                        input.value = val;
+                        movePathsContainer.appendChild(input);
+                    });
+                    moveTargetDir.value = moveCurrentPath || '';
+                    moveForm.submit();
+                    if (moveModal) moveModal.hide();
+                });
+            }
+
             previewButtons.forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
@@ -551,19 +681,10 @@
                 moveBtn.addEventListener('click', () => {
                     const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
                     if (selected.length === 0) return;
-                    const target = prompt('请输入目标目录（相对路径，根目录留空）：', '');
-                    if (target === null) return;
-                    if (!moveForm || !movePathsContainer || !moveTargetDir) return;
-                    movePathsContainer.innerHTML = '';
-                    selected.forEach(val => {
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'paths';
-                        input.value = val;
-                        movePathsContainer.appendChild(input);
-                    });
-                    moveTargetDir.value = target.trim();
-                    moveForm.submit();
+                    pendingMovePaths = selected;
+                    moveCurrentPath = (container.querySelector('input[name="path"]')?.value ?? '').trim();
+                    openMoveModal();
+                    loadMoveList(moveCurrentPath);
                 });
             }
 
