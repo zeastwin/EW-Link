@@ -32,7 +32,7 @@ builder.Services.PostConfigure<ResourceOptions>(options =>
 
 builder.Services.AddDataProtection()
     .SetApplicationName("ew-link")
-    .PersistKeysToFileSystem(new DirectoryInfo("/Data/aspnet-keys"));
+    .PersistKeysToFileSystem(new DirectoryInfo(builder.Configuration["DATA_PROTECTION_KEYS_ROOT"] ?? "/var/aspnet-keys"));
 
 builder.Services.AddSingleton<IResourceStore, ResourceStore>();
 builder.Services.AddSingleton<IZipStreamService, ZipStreamService>();

@@ -5,9 +5,10 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - RESOURCES_ROOT=/Data/resources
+      - DATA_PROTECTION_KEYS_ROOT=/var/aspnet-keys
     volumes:
       - D:/Data/resources:/Data/resources
-      - resources_keys:/Data/aspnet-keys
+      - resources_keys:/var/aspnet-keys
     expose:
       - "8080"
     restart: unless-stopped
