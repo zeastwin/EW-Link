@@ -525,7 +525,9 @@
                     }
                     if (percent > 100) percent = 100;
                     uploadProgressBar.style.width = `${percent}%`;
-                    uploadProgressBar.textContent = `${percent}%`;
+                    const uploadedText = formatBytes(uploadState.uploadedBytes);
+                    const totalText = formatBytes(uploadState.totalBytes);
+                    uploadProgressBar.textContent = `${percent}% (${uploadedText} / ${totalText})`;
                 }
                 if (uploadSpeed) {
                     if (uploadState.startAt > 0 && uploadState.uploadedBytes > 0) {
