@@ -171,22 +171,21 @@ public class ResourceStore : IResourceStore
             throw new InvalidOperationException($"File exceeds the maximum allowed size of {UploadLimitBytes} bytes.");
         }
 
-        var fileName = Path.GetFileName(file.FileName);
-        if (string.IsNullOrWhiteSpace(fileName))
+        var relativeFilePath = NormalizeUploadRelativePath(file.FileName);
+        var combinedRelativePath = CombineRelativePath(relativePath, relativeFilePath);
+
+        var targetFileName = Path.GetFileName(combinedRelativePath);
+        if (string.IsNullOrWhiteSpace(targetFileName))
         {
             throw new InvalidOperationException("File name is required.");
         }
 
-        if (fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            throw new InvalidOperationException("File name contains invalid characters.");
-        }
-
         var subRoot = _pathHelper.ResolveSubRoot(tab);
-        var targetDirectory = _pathHelper.ResolveSafeFullPath(subRoot, relativePath);
+        var targetDirectoryRelative = Path.GetDirectoryName(combinedRelativePath) ?? string.Empty;
+        var targetDirectory = _pathHelper.ResolveSafeFullPath(subRoot, targetDirectoryRelative);
         CreateDirectoryIfNotExists(targetDirectory);
 
-        var targetFileName = GetAvailableFileName(targetDirectory, fileName);
+        targetFileName = GetAvailableFileName(targetDirectory, targetFileName);
         var targetPath = Path.Combine(targetDirectory, targetFileName);
 
         var tempRoot = GetUploadTempRoot(subRoot);
@@ -232,7 +231,7 @@ public class ResourceStore : IResourceStore
         return new ResourceEntry
         {
             Name = info.Name,
-            RelativePath = CombineRelativePath(relativePath, info.Name),
+            RelativePath = CombineRelativePath(targetDirectoryRelative, info.Name),
             IsDirectory = false,
             SizeBytes = info.Length,
             LastWriteTime = new DateTimeOffset(info.LastWriteTime)
@@ -704,6 +703,41 @@ public class ResourceStore : IResourceStore
 
         var trimmed = basePath.TrimEnd('/', '\\');
         return $"{trimmed}/{name}";
+    }
+
+    private static string NormalizeUploadRelativePath(string rawPath)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath))
+        {
+            throw new InvalidOperationException("File name is required.");
+        }
+
+        var normalized = rawPath.Replace('\\', '/').TrimStart('/');
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new InvalidOperationException("File name is required.");
+        }
+
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            throw new InvalidOperationException("File name is required.");
+        }
+
+        foreach (var segment in segments)
+        {
+            if (segment is "." or "..")
+            {
+                throw new InvalidOperationException("Path traversal is not allowed.");
+            }
+
+            if (segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                throw new InvalidOperationException("File name contains invalid characters.");
+            }
+        }
+
+        return string.Join('/', segments);
     }
 
     private static string GetAvailableFileName(string directory, string fileName)

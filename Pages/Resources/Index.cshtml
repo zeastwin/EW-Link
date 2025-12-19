@@ -124,6 +124,8 @@
                     <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
                     <div class="input-group flex-grow-1" id="upload-drop-target">
                         <input type="file" name="files" id="upload-file" class="form-control" multiple />
+                        <input type="file" id="upload-folder" class="d-none" webkitdirectory directory multiple />
+                        <label class="btn btn-outline-secondary px-3" for="upload-folder">选择文件夹</label>
                         <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
                     </div>
                 </form>
@@ -402,6 +404,7 @@
             const shareTargetsContainer = container.querySelector('#share-targets-container');
             const uploadForm = container.querySelector('#upload-form');
             const uploadFile = container.querySelector('#upload-file');
+            const uploadFolder = container.querySelector('#upload-folder');
             const uploadBtn = container.querySelector('#upload-submit');
             const uploadStatus = container.querySelector('#upload-status');
             const uploadProgressContainer = container.querySelector('#upload-progress-container');
@@ -477,6 +480,25 @@
                 uploadStatus.classList.remove('d-none', 'alert-success', 'alert-danger');
                 uploadStatus.classList.add(type === 'success' ? 'alert-success' : 'alert-danger');
                 uploadStatus.textContent = message;
+            };
+
+            const collectUploadFiles = () => {
+                const selected = [];
+                if (uploadFile?.files?.length) {
+                    selected.push(...Array.from(uploadFile.files));
+                }
+                if (uploadFolder?.files?.length) {
+                    selected.push(...Array.from(uploadFolder.files));
+                }
+                return selected;
+            };
+
+            const getUploadFileName = (file) => {
+                const relativePath = file?.webkitRelativePath;
+                if (relativePath && relativePath.trim().length > 0) {
+                    return relativePath;
+                }
+                return file.name;
             };
 
             const uploadState = {
@@ -609,7 +631,7 @@
 
                 const formData = new FormData(uploadForm);
                 formData.delete('files');
-                formData.append('files', file, file.name);
+                formData.append('files', file, getUploadFileName(file));
                 const token = uploadForm.querySelector('input[name=\"__RequestVerificationToken\"]')?.value;
                 xhr.open('POST', uploadForm.action);
                 if (token) xhr.setRequestHeader('RequestVerificationToken', token);
@@ -637,10 +659,34 @@
                 startNextUpload();
             };
 
-            if (uploadForm && uploadFile && uploadBtn) {
+            if (uploadForm && uploadBtn && (uploadFile || uploadFolder)) {
                 uploadForm.addEventListener('submit', (e) => {
                     e.preventDefault();
-                    handleUploadSubmit(uploadFile.files);
+                    handleUploadSubmit(collectUploadFiles());
+                });
+            }
+
+            if (uploadFile) {
+                uploadFile.addEventListener('change', () => {
+                    if (uploadFolder) {
+                        uploadFolder.value = '';
+                    }
+                    const selected = collectUploadFiles();
+                    if (selected.length > 0) {
+                        showUploadStatus(`已选择 ${selected.length} 个文件，点击上传开始。`, 'success');
+                    }
+                });
+            }
+
+            if (uploadFolder) {
+                uploadFolder.addEventListener('change', () => {
+                    if (uploadFile) {
+                        uploadFile.value = '';
+                    }
+                    const selected = collectUploadFiles();
+                    if (selected.length > 0) {
+                        showUploadStatus(`已选择 ${selected.length} 个文件，点击上传开始。`, 'success');
+                    }
                 });
             }
 
@@ -686,6 +732,9 @@
                     unhighlight();
                     const dt = e.dataTransfer;
                     if (!dt || !dt.files || dt.files.length === 0) return;
+                    if (uploadFolder) {
+                        uploadFolder.value = '';
+                    }
                     uploadFile.files = dt.files;
                     showUploadStatus(`已选择 ${dt.files.length} 个文件，点击上传开始。`, 'success');
                 });
