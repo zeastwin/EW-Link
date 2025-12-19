@@ -16,7 +16,7 @@ public class TemporaryCleanupService : BackgroundService
     private readonly ResourceOptions _options;
     private readonly ResourcePathHelper _pathHelper;
     private readonly TimeSpan _interval = TimeSpan.FromHours(1);
-    private readonly TimeSpan _expiration = TimeSpan.FromHours(24);
+    private readonly TimeSpan _expiration = TimeSpan.FromHours(72);
 
     public TemporaryCleanupService(IOptions<ResourceOptions> options, ILogger<TemporaryCleanupService> logger)
     {

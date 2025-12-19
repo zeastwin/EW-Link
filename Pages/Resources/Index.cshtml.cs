@@ -558,9 +558,9 @@ public class IndexModel : PageModel
 
     private ResourceTab ParseTab(string? tab)
     {
-        return string.Equals(tab, "temporary", StringComparison.OrdinalIgnoreCase)
-            ? ResourceTab.Temporary
-            : ResourceTab.Permanent;
+        return string.Equals(tab, "permanent", StringComparison.OrdinalIgnoreCase)
+            ? ResourceTab.Permanent
+            : ResourceTab.Temporary;
     }
 
     private bool TryLoadPageData(string? tab, string? path, string? filter, string? sort, string? dir, string? view, out IActionResult? errorResult)

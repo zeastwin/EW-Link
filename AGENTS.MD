@@ -19,7 +19,7 @@
 - `ResourceStore`（`Services/ResourceStore.cs`）：列目录、上传、删除、单文件读取；校验文件/文件夹名；同名冲突追加 ` (n)`；删除改为移入回收站（`.trash`，含元数据），支持重命名、批量移动（同区内，阻止自包含移动与同名覆盖）、回收站列举/还原/彻底删除；批量打包时可递归收集文件夹（含空目录占位），去重并阻止直接打包资源根。
 - `ResourcePathHelper`：归一化子根路径，拒绝根路径、`..`、无效字符或驱动器标记，阻止越界访问。
 - `ZipStreamService`：将多文件流式写入 ZIP，归一化条目名称，不关闭 HTTP 响应流；页面处理下载时使用 `Response.BodyWriter.AsStream` 适配禁用同步 IO。
-- `TemporaryCleanupService`：每小时清理临时目录，删除 24 小时前的文件并移除空目录。
+- `TemporaryCleanupService`：每小时清理临时目录，删除 72 小时前的文件并移除空目录。
 - `TrashCleanupService`：每小时清理回收站中过期（默认 30 天）条目。
 - `UploadCleanupService`：每小时清理上传临时目录 `.uploading`（默认 6 小时前的残留），避免半成品占用空间；上传写入临时文件成功后原子移动到目标，失败会删除临时文件。
 - 分享直链：支持配置 `Share:ForcePort` 强制输出指定端口（例如 8080），未配置则跟随当前请求的 Host/端口。

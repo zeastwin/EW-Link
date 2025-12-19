@@ -34,6 +34,10 @@
                 <span>总大小：@Model.FormatSize(Model.TotalSize)</span>
             </div>
         </div>
+        @if (Model.SelectedTab == ResourceTab.Temporary)
+        {
+            <div class="text-muted small mb-3">提示：临时文件夹用于临时传递文件，超过 72 小时将自动清理。</div>
+        }
 
         @if (TempData["SuccessMessage"] is string successMessage)
         {
