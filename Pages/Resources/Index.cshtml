@@ -11,14 +11,6 @@
     <section class="glass-panel shadow-sm">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
             <div class="d-flex align-items-center gap-2">
-                <a class="badge rounded-pill resource-tab-link tab-chip tab-chip-strong @ActiveTab(ResourceTab.Permanent)"
-                   asp-page="/Resources/Index"
-                   asp-route-tab="permanent"
-                   asp-route-path="@Model.CurrentPath"
-                   asp-route-q="@Model.Filter"
-                   asp-route-sort="@Model.SortFieldParam"
-                   asp-route-dir="@Model.SortDirectionParam"
-                   asp-route-view="@(Model.IsTrashView ? "trash" : null)">永久文件夹</a>
                 <a class="badge rounded-pill resource-tab-link tab-chip tab-chip-strong @ActiveTab(ResourceTab.Temporary)"
                    asp-page="/Resources/Index"
                    asp-route-tab="temporary"
@@ -27,6 +19,14 @@
                    asp-route-sort="@Model.SortFieldParam"
                    asp-route-dir="@Model.SortDirectionParam"
                    asp-route-view="@(Model.IsTrashView ? "trash" : null)">临时文件夹</a>
+                <a class="badge rounded-pill resource-tab-link tab-chip tab-chip-strong @ActiveTab(ResourceTab.Permanent)"
+                   asp-page="/Resources/Index"
+                   asp-route-tab="permanent"
+                   asp-route-path="@Model.CurrentPath"
+                   asp-route-q="@Model.Filter"
+                   asp-route-sort="@Model.SortFieldParam"
+                   asp-route-dir="@Model.SortDirectionParam"
+                   asp-route-view="@(Model.IsTrashView ? "trash" : null)">永久文件夹</a>
             </div>
             <div class="text-end small text-muted">
                 <span class="me-3">目录数：@Model.DirectoryCount</span>
