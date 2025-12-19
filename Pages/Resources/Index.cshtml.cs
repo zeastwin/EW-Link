@@ -93,7 +93,7 @@ public class IndexModel : PageModel
         var successCount = 0;
         foreach (var file in files)
         {
-            if (file == null || file.Length == 0)
+            if (file == null)
             {
                 continue;
             }

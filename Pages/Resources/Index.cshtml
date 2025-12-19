@@ -122,7 +122,7 @@
                     <input type="hidden" name="sort" value="@Model.SortFieldParam" />
                     <input type="hidden" name="dir" value="@Model.SortDirectionParam" />
                     <input type="hidden" name="view" value="@(Model.IsTrashView ? "trash" : string.Empty)" />
-                    <div class="input-group flex-grow-1">
+                    <div class="input-group flex-grow-1" id="upload-drop-target">
                         <input type="file" name="files" id="upload-file" class="form-control" multiple />
                         <button type="submit" class="btn btn-success px-3" id="upload-submit">上传</button>
                     </div>
@@ -407,6 +407,7 @@
             const uploadProgressContainer = container.querySelector('#upload-progress-container');
             const uploadProgressBar = container.querySelector('#upload-progress-bar');
             const dropTarget = container.querySelector('.resource-list');
+            const uploadDropTarget = container.querySelector('#upload-drop-target');
             const uploadCancelBtn = container.querySelector('#upload-cancel');
             const uploadSpeed = container.querySelector('#upload-speed');
             const sortForm = container.querySelector('#sort-form');
@@ -656,27 +657,43 @@
                 });
             }
 
-            if (dropTarget && uploadFile) {
-                const highlight = () => dropTarget.classList.add('drop-target-hover');
-                const unhighlight = () => dropTarget.classList.remove('drop-target-hover');
-                ['dragenter', 'dragover'].forEach(evt => {
-                    dropTarget.addEventListener(evt, (e) => {
-                        e.preventDefault();
-                        highlight();
-                    });
+            const bindDropTarget = (target) => {
+                if (!target || !uploadFile) return;
+                let dragCounter = 0;
+                const highlight = () => target.classList.add('drop-target-hover');
+                const unhighlight = () => target.classList.remove('drop-target-hover');
+                target.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    dragCounter++;
+                    highlight();
                 });
-                ['dragleave', 'drop'].forEach(evt => {
-                    dropTarget.addEventListener(evt, (e) => {
-                        e.preventDefault();
+                target.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    if (e.dataTransfer) {
+                        e.dataTransfer.dropEffect = 'copy';
+                    }
+                });
+                target.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    dragCounter = Math.max(0, dragCounter - 1);
+                    if (dragCounter === 0) {
                         unhighlight();
-                    });
+                    }
                 });
-                dropTarget.addEventListener('drop', (e) => {
+                target.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dragCounter = 0;
+                    unhighlight();
                     const dt = e.dataTransfer;
                     if (!dt || !dt.files || dt.files.length === 0) return;
                     uploadFile.files = dt.files;
                     showUploadStatus(`已选择 ${dt.files.length} 个文件，点击上传开始。`, 'success');
                 });
+            };
+
+            if (uploadFile) {
+                bindDropTarget(dropTarget);
+                bindDropTarget(uploadDropTarget);
             }
 
             if (createFolderForm && createFolderBtn && createFolderName) {
