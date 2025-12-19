@@ -2,7 +2,7 @@
 @model EW_Link.Pages.Resources.IndexModel
 @using EW_Link.Services
 @{
-    ViewData["Title"] = "资源门户";
+    ViewData["Title"] = "EW-Link";
     string ActiveTab(ResourceTab tab) => Model.SelectedTab == tab ? "active" : string.Empty;
     var currentPathDisplay = string.IsNullOrWhiteSpace(Model.CurrentPath) ? "/" : Model.CurrentPath;
 }
